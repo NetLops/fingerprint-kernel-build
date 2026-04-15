@@ -74,6 +74,11 @@ jobs:
             args+=(--packaging-ref "${{ inputs.packaging_ref }}")
           fi
           "$FK_PYTHON" scripts/prepare_build_context.py "${args[@]}"
+
+      - name: Show Prepared Repo Status
+        shell: bash
+        run: |
+          set -euo pipefail
           git -C "$FK_PACKAGING_REPO_DIR" status --short || true
 
       - name: Build Chromium.app
