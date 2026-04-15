@@ -3,10 +3,18 @@ import argparse
 import json
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import textwrap
 import time
 from pathlib import Path
+
+
+def default_runner_python() -> str:
+    repo_python = Path(__file__).resolve().parents[1] / ".venv" / "bin" / "python"
+    if repo_python.is_file():
+        return str(repo_python)
+    return sys.executable
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,8 +42,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--runner-python",
-        default=str(Path(__file__).resolve().parents[1] / ".venv" / "bin" / "python"),
-        help="Python interpreter used to invoke run_smoke_checks.py. Default: repo .venv python",
+        default=default_runner_python(),
+        help="Python interpreter used to invoke run_smoke_checks.py. Default: repo .venv python if present, else current Python",
     )
     parser.add_argument(
         "--smoke-script",
