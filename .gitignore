@@ -1,0 +1,16 @@
+.DS_Store
+__pycache__/
+*.pyc
+.env
+.env.*
+logs/*
+!logs/README.md
+artifacts/*
+!artifacts/README.md
+signing/*
+!signing/README.md
+work/
+out/
+src/
+repos/
+tmp/

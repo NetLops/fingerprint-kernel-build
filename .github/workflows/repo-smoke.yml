@@ -1,0 +1,40 @@
+name: repo-smoke
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Scripts
+        run: python3 -m py_compile scripts/*.py
+
+      - name: Render Upgrade Plan
+        shell: bash
+        run: |
+          if [ -f manifests/current.json ]; then
+            python3 scripts/render_upgrade_plan.py --manifest manifests/current.json
+          else
+            echo "manifests/current.json not found, skip render plan"
+          fi
+
+      - name: Check Patch Queues
+        shell: bash
+        run: |
+          for series in patches/packaging/SERIES.txt patches/chromium/SERIES.txt patches/product/SERIES.txt; do
+            if [ -f "$series" ]; then
+              echo "checking $series"
+              cat "$series"
+            fi
+          done

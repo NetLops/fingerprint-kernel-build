@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "kernelVersion": "146.0.7680.177-fk.1",
+  "kernelName": "Chromium Fingerprint 146.0.7680.177",
+  "platform": "mac-arm64",
+  "versions": {
+    "chromium": "146.0.7680.177",
+    "chromiumTag": "146.0.7680.177",
+    "ungoogledTag": "146.0.7680.177-1.1",
+    "kernelRevision": "fk.1"
+  },
+  "repos": {
+    "packagingRepo": "https://github.com/ungoogled-software/ungoogled-chromium-macos.git",
+    "upstreamRepo": "https://github.com/ungoogled-software/ungoogled-chromium.git"
+  },
+  "paths": {
+    "workspaceRoot": "/Users/netlops/Documents/ai/github/fingerprint-kernel-build/work/146.0.7680.177-fk.1-mac-arm64",
+    "reposRoot": "/Users/netlops/Documents/ai/github/fingerprint-kernel-build/work/146.0.7680.177-fk.1-mac-arm64/repos",
+    "packagingRepoDir": "/Users/netlops/Documents/ai/github/fingerprint-kernel-build/work/146.0.7680.177-fk.1-mac-arm64/repos/ungoogled-chromium-macos",
+    "chromiumSourceDir": "/Users/netlops/Documents/ai/github/fingerprint-kernel-build/work/146.0.7680.177-fk.1-mac-arm64/repos/ungoogled-chromium-macos/build/src",
+    "patchesRoot": "/Users/netlops/Documents/ai/github/fingerprint-kernel-build/work/146.0.7680.177-fk.1-mac-arm64/patches",
+    "packagingPatchesDir": "/Users/netlops/Documents/ai/github/fingerprint-kernel-build/work/146.0.7680.177-fk.1-mac-arm64/patches/packaging",
+    "chromiumPatchesDir": "/Users/netlops/Documents/ai/github/fingerprint-kernel-build/work/146.0.7680.177-fk.1-mac-arm64/patches/chromium",
+    "productPatchesDir": "/Users/netlops/Documents/ai/github/fingerprint-kernel-build/work/146.0.7680.177-fk.1-mac-arm64/patches/product",
+    "artifactDir": "/Users/netlops/Documents/ai/github/fingerprint-kernel-build/work/146.0.7680.177-fk.1-mac-arm64/artifacts",
+    "logsDir": "/Users/netlops/Documents/ai/github/fingerprint-kernel-build/work/146.0.7680.177-fk.1-mac-arm64/logs",
+    "signingDir": "/Users/netlops/Documents/ai/github/fingerprint-kernel-build/work/146.0.7680.177-fk.1-mac-arm64/signing"
+  },
+  "build": {
+    "hostOs": "darwin",
+    "hostArch": "arm64",
+    "targetOs": "darwin",
+    "targetArch": "arm64",
+    "bundleName": "Chromium.app",
+    "gnArgsSuggested": [
+      "is_official_build=true",
+      "is_component_build=false",
+      "target_cpu=\"arm64\""
+    ]
+  },
+  "fingerprint": {
+    "entryFlags": [
+      "--fingerprint",
+      "--fingerprint-platform",
+      "--fingerprint-brand",
+      "--timezone",
+      "--accept-lang",
+      "--disable-spoofing"
+    ],
+    "patchModules": [
+      "launch-flags",
+      "ua-client-hints",
+      "navigator-platform",
+      "timezone-language",
+      "webgl-canvas-audio",
+      "fonts-client-rects",
+      "webrtc",
+      "automation-anti-detection"
+    ]
+  },
+  "install": {
+    "antBrowserStateRoot": "/Users/netlops/Library/Application Support/ant-browser",
+    "relativeCorePath": "chrome/chromium-146.0.7680.177-fk.1",
+    "suggestedCoreName": "Chromium 146.0.7680.177 FK"
+  }
+}

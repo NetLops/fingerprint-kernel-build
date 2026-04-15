@@ -1,0 +1,103 @@
+name: build-mac-arm64
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: Path to the kernel manifest JSON
+        required: true
+        default: manifests/current.json
+      packaging_ref:
+        description: Optional override for the packaging repo git ref
+        required: false
+        default: ""
+      dry_run:
+        description: If true, stop after preparing the build context
+        required: true
+        type: choice
+        default: "true"
+        options:
+          - "true"
+          - "false"
+
+concurrency:
+  group: build-mac-arm64-${{ github.ref }}-${{ inputs.manifest_path }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Scripts
+        run: python3 -m py_compile scripts/*.py
+
+      - name: Show Upgrade Plan
+        run: python3 scripts/render_upgrade_plan.py --manifest "${{ inputs.manifest_path }}"
+
+      - name: Check Runner Prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          for bin in git python3 greadlink ninja node xcodebuild; do
+            command -v "$bin" >/dev/null
+            echo "[OK] found $bin -> $(command -v "$bin")"
+          done
+
+      - name: Prepare Build Context
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--manifest "${{ inputs.manifest_path }}" --repo-root "$PWD")
+          if [ -n "${{ inputs.packaging_ref }}" ]; then
+            args+=(--packaging-ref "${{ inputs.packaging_ref }}")
+          fi
+          python3 scripts/prepare_build_context.py "${args[@]}"
+          git -C "$FK_PACKAGING_REPO_DIR" status --short || true
+
+      - name: Build Chromium.app
+        if: ${{ inputs.dry_run != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$FK_PACKAGING_REPO_DIR"
+          ./build.sh arm64 2>&1 | tee "$FK_LOGS_DIR/build.log"
+
+      - name: Smoke Check Built App
+        if: ${{ inputs.dry_run != 'true' }}
+        run: |
+          python3 scripts/run_smoke_checks.py \
+            --app "$FK_PACKAGING_REPO_DIR/build/src/out/Default/Chromium.app"
+
+      - name: Collect Build Outputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/last-run logs/last-run
+          if [ -n "${FK_LOGS_DIR:-}" ] && [ -d "$FK_LOGS_DIR" ]; then
+            rsync -a "$FK_LOGS_DIR"/ logs/last-run/ || true
+          fi
+          if [ -n "${FK_PACKAGING_REPO_DIR:-}" ] && [ -d "$FK_PACKAGING_REPO_DIR/build" ]; then
+            find "$FK_PACKAGING_REPO_DIR/build" -maxdepth 1 \( -name '*.dmg' -o -name '*.zip' \) -exec cp {} artifacts/last-run/ \; || true
+          fi
+
+      - name: Upload Run Outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-mac-arm64-${{ github.run_id }}
+          path: |
+            artifacts/last-run/
+            logs/last-run/
+            manifests/current.json
