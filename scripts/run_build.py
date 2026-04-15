@@ -2,6 +2,7 @@
 import argparse
 from datetime import datetime, timedelta, timezone
 import json
+import plistlib
 from pathlib import Path
 import shutil
 import subprocess
@@ -251,6 +252,131 @@ def find_built_app(manifest: dict) -> Path:
     raise RuntimeError(f"built app bundle not found under: {packaging_repo_dir}")
 
 
+def try_find_local_built_app(manifest: dict) -> Path | None:
+    try:
+        return find_built_app(manifest)
+    except RuntimeError:
+        return None
+
+
+def download_run_artifacts(repo_root: Path, repo: str, run_id: int, download_dir: Path) -> Path:
+    if download_dir.exists():
+        shutil.rmtree(download_dir)
+    download_dir.mkdir(parents=True, exist_ok=True)
+    run(["gh", "run", "download", "-R", repo, str(run_id), "-D", str(download_dir)], cwd=repo_root)
+    return download_dir
+
+
+def extract_zip_archive(zip_path: Path, target_root: Path) -> Path:
+    dest = target_root / zip_path.stem
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    run(["ditto", "-x", "-k", str(zip_path), str(dest)])
+    return dest
+
+
+def attach_dmg(dmg_path: Path) -> tuple[str, Path]:
+    proc = run(
+        ["hdiutil", "attach", "-nobrowse", "-readonly", "-plist", str(dmg_path)],
+        capture_output=True,
+    )
+    plist = plistlib.loads(proc.stdout.encode("utf-8"))
+    entities = plist.get("system-entities", [])
+    for entity in entities:
+        mount_point = entity.get("mount-point")
+        if mount_point:
+            return entity.get("dev-entry", ""), Path(mount_point)
+    raise RuntimeError(f"could not resolve mount point from dmg: {dmg_path}")
+
+
+def detach_dmg(dev_entry: str, mount_point: Path) -> None:
+    target = dev_entry or str(mount_point)
+    subprocess.run(["hdiutil", "detach", target], check=False, capture_output=True, text=True)
+
+
+def find_app_bundle(root: Path, bundle_name: str) -> Path | None:
+    direct = root / bundle_name
+    if direct.is_dir():
+        return direct
+    matches = sorted(root.rglob(bundle_name))
+    for match in matches:
+        if match.is_dir():
+            return match
+    return None
+
+
+def copy_app_bundle(source_app: Path, dest_root: Path) -> Path:
+    dest_root.mkdir(parents=True, exist_ok=True)
+    dest_app = dest_root / source_app.name
+    if dest_app.exists():
+        shutil.rmtree(dest_app)
+    run(["ditto", str(source_app), str(dest_app)])
+    return dest_app
+
+
+def extract_app_from_dmg(dmg_path: Path, bundle_name: str, target_root: Path) -> Path | None:
+    dev_entry = ""
+    mount_point = None
+    try:
+        dev_entry, mount_point = attach_dmg(dmg_path)
+        app = find_app_bundle(mount_point, bundle_name)
+        if app is None:
+            return None
+        return copy_app_bundle(app, target_root / dmg_path.stem)
+    finally:
+        if mount_point is not None:
+            detach_dmg(dev_entry, mount_point)
+
+
+def resolve_downloaded_built_app(
+    repo_root: Path,
+    repo: str,
+    run_id: int,
+    manifest: dict,
+) -> Path:
+    artifact_dir = Path(manifest["paths"]["artifactDir"]).expanduser().resolve()
+    bundle_name = manifest["build"]["bundleName"]
+    download_dir = artifact_dir / f"gh-run-{run_id}-download"
+    extracted_dir = artifact_dir / f"gh-run-{run_id}-extracted"
+
+    download_run_artifacts(repo_root, repo, run_id, download_dir)
+
+    app = find_app_bundle(download_dir, bundle_name)
+    if app is not None:
+        return app
+
+    if extracted_dir.exists():
+        shutil.rmtree(extracted_dir)
+    extracted_dir.mkdir(parents=True, exist_ok=True)
+
+    for zip_path in sorted(download_dir.rglob("*.zip")):
+        extracted = extract_zip_archive(zip_path, extracted_dir)
+        app = find_app_bundle(extracted, bundle_name)
+        if app is not None:
+            return app
+
+    for dmg_path in sorted(download_dir.rglob("*.dmg")):
+        app = extract_app_from_dmg(dmg_path, bundle_name, extracted_dir)
+        if app is not None:
+            return app
+
+    raise RuntimeError(
+        f"no {bundle_name} found in downloaded artifacts for run {run_id}: {download_dir}"
+    )
+
+
+def resolve_installable_app(repo_root: Path, repo: str, run_id: int, manifest: dict) -> Path:
+    local_app = try_find_local_built_app(manifest)
+    if local_app is not None:
+        print(f"[OK] using local built app: {local_app}")
+        return local_app
+
+    downloaded_app = resolve_downloaded_built_app(repo_root, repo, run_id, manifest)
+    print(f"[OK] using downloaded built app: {downloaded_app}")
+    return downloaded_app
+
+
 def resolve_installer_script(args: argparse.Namespace, repo_root: Path) -> Path:
     if args.installer_script:
         script = Path(args.installer_script).expanduser().resolve()
@@ -266,11 +392,11 @@ def resolve_installer_script(args: argparse.Namespace, repo_root: Path) -> Path:
     return script
 
 
-def install_built_app(args: argparse.Namespace, repo_root: Path, manifest: dict) -> None:
+def install_built_app(args: argparse.Namespace, repo_root: Path, manifest: dict, run_id: int) -> None:
     if args.dry_run:
         raise RuntimeError("--install cannot be used with --dry-run")
 
-    app_path = find_built_app(manifest)
+    app_path = resolve_installable_app(repo_root, args.repo, run_id, manifest)
     installer_script = resolve_installer_script(args, repo_root)
     install_info = manifest.get("install", {})
     core_name = args.core_name or install_info.get("suggestedCoreName") or f"Chromium {manifest['kernelVersion']}"
@@ -331,7 +457,7 @@ def main() -> int:
     print(f"[OK] workflow run succeeded: {run_id}")
 
     if args.install:
-        install_built_app(args, repo_root, manifest)
+        install_built_app(args, repo_root, manifest, run_id)
     return 0
 
 

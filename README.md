@@ -102,7 +102,8 @@ python3 scripts/run_build.py \
 
 1. dispatch GitHub Actions 构建
 2. watch 当前 run 到结束
-3. 成功后把 `Chromium.app` 装进本机 Ant Browser
+3. 成功后优先使用本地产物，若本地没有则自动下载 GitHub artifact
+4. 自动解包 `.zip` / `.dmg`，把 `Chromium.app` 装进本机 Ant Browser
 
 如果 workflow 已经在跑，也可以直接接管现有 run：
 

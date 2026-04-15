@@ -38,6 +38,7 @@
   - `.github/workflows/build-mac-arm64.yml`
 - 懒人一键入口：
   - `python3 scripts/run_build.py --manifest manifests/current.json --install --set-default --replace-existing`
+  - 如果成功后本地工作区没有现成 `Chromium.app`，脚本会自动下载当前 GitHub run 的 artifact，并尝试从 `.zip` / `.dmg` 里提取可安装的 `Chromium.app`
 - 后台安装后验收：
   - `python3 scripts/post_build_verify.py --run-id <gh-run-id> --core-path chrome/chromium-<version>`
 
