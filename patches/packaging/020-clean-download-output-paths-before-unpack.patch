@@ -1,14 +1,21 @@
 diff --git a/retrieve_and_unpack_resource.sh b/retrieve_and_unpack_resource.sh
-index a1fb3a5..014abbe 100755
+index a1fb3a5..a69336f 100755
 --- a/retrieve_and_unpack_resource.sh
 +++ b/retrieve_and_unpack_resource.sh
-@@ -39,6 +39,35 @@ shift "$(($OPTIND -1))"
+@@ -39,6 +39,33 @@ shift "$(($OPTIND -1))"
  
  _target_cpu=${1:-arm64}
  
 +_cleanup_unpack_outputs() {
 +    local _ini_path="$1"
-+    mapfile -t _output_paths < <(
++    while IFS= read -r _relative_path; do
++        [[ -n "$_relative_path" ]] || continue
++        local _target_path="$_src_dir/$_relative_path"
++        if [[ -e "$_target_path" ]]; then
++            echo "INFO: Removing existing unpack target: $_target_path"
++            rm -rf "$_target_path"
++        fi
++    done < <(
 +        python3 - "$_ini_path" <<'PY'
 +import configparser
 +import sys
@@ -24,21 +31,12 @@ index a1fb3a5..014abbe 100755
 +        seen.add(output_path)
 +PY
 +    )
-+
-+    local _relative_path
-+    for _relative_path in "${_output_paths[@]}"; do
-+        local _target_path="$_src_dir/$_relative_path"
-+        if [[ -e "$_target_path" ]]; then
-+            echo "INFO: Removing existing unpack target: $_target_path"
-+            rm -rf "$_target_path"
-+        fi
-+    done
 +}
 +
  if $retrieve_generic; then
      if $clone; then
          if [[ $_target_cpu == "arm64" ]]; then
-@@ -55,6 +84,7 @@ if $retrieve_generic; then
+@@ -55,6 +82,7 @@ if $retrieve_generic; then
  
      # Retrieve and unpack general resources
      python3 "$_main_repo/utils/downloads.py" retrieve -i "$_root_dir/downloads.ini" -c "$_download_cache"
@@ -46,7 +44,7 @@ index a1fb3a5..014abbe 100755
      python3 "$_main_repo/utils/downloads.py" unpack -i "$_root_dir/downloads.ini" -c "$_download_cache" "$_src_dir"
  fi
  
-@@ -69,17 +99,21 @@ if $retrieve_arch_specific; then
+@@ -69,17 +97,21 @@ if $retrieve_arch_specific; then
      if [[ $(uname -m) == "arm64" ]]; then
          python3 "$_main_repo/utils/downloads.py" retrieve -i "$_root_dir/downloads-arm64.ini" -c "$_download_cache"
          mkdir -p "$_src_dir/third_party/node/mac_arm64/node-darwin-arm64/"
