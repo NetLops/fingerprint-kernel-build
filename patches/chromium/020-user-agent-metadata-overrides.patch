@@ -1,0 +1,267 @@
+diff --git a/content/browser/client_hints/client_hints.cc b/content/browser/client_hints/client_hints.cc
+index a1967e8..f934aca 100644
+--- a/content/browser/client_hints/client_hints.cc
++++ b/content/browser/client_hints/client_hints.cc
+@@ -36,6 +36,7 @@
+ #include "content/public/common/content_client.h"
+ #include "content/public/common/content_features.h"
+ #include "content/public/common/content_switches.h"
++#include "components/ungoogled/ungoogled_switches.h"
+ #include "net/base/url_util.h"
+ #include "net/http/http_request_headers.h"
+ #include "net/http/http_response_headers.h"
+@@ -67,6 +68,109 @@ namespace content {
+ namespace {
+ using ::network::mojom::WebClientHintsType;
+ 
++std::string CanonicalFingerprintPlatform(std::string platform) {
++  platform = base::ToLowerASCII(platform);
++  if (platform == "macos") {
++    return "mac";
++  }
++  return platform;
++}
++
++std::string MajorVersionFrom(std::string version) {
++  const size_t dot = version.find('.');
++  if (dot == std::string::npos) {
++    return version;
++  }
++  return version.substr(0, dot);
++}
++
++void UpsertBrandVersion(blink::UserAgentBrandList* brands,
++                        const std::string& brand,
++                        const std::string& version) {
++  for (auto& item : *brands) {
++    if (item.brand == brand) {
++      item.version = version;
++      return;
++    }
++  }
++  brands->push_back({brand, version});
++}
++
++void ApplyFingerprintUserAgentMetadata(blink::UserAgentMetadata* metadata) {
++  if (!metadata) {
++    return;
++  }
++
++  const base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
++
++  const std::string platform = CanonicalFingerprintPlatform(
++      command_line->GetSwitchValueASCII(switches::kFingerprintPlatform));
++  const std::string custom_platform_version =
++      command_line->GetSwitchValueASCII(switches::kFingerprintPlatformVersion);
++  if (platform == "windows") {
++    metadata->platform = "Windows";
++    metadata->platform_version =
++        custom_platform_version.empty() ? "10.0.0" : custom_platform_version;
++    metadata->architecture = "x86";
++  } else if (platform == "linux") {
++    metadata->platform = "Linux";
++    metadata->platform_version =
++        custom_platform_version.empty() ? "6.0.0" : custom_platform_version;
++    metadata->architecture = "x86";
++  } else if (platform == "mac") {
++    metadata->platform = "macOS";
++    metadata->platform_version =
++        custom_platform_version.empty() ? "15.0.0" : custom_platform_version;
++    metadata->architecture = "arm";
++  }
++
++  if (!command_line->HasSwitch(switches::kFingerprintBrand)) {
++    return;
++  }
++
++  const std::string brand = base::ToLowerASCII(
++      command_line->GetSwitchValueASCII(switches::kFingerprintBrand));
++  std::string full_version =
++      command_line->GetSwitchValueASCII(switches::kFingerprintBrandVersion);
++  if (full_version.empty()) {
++    full_version = metadata->full_version;
++  }
++  if (full_version.empty()) {
++    return;
++  }
++
++  const std::string major_version = MajorVersionFrom(full_version);
++  if (brand == "chrome") {
++    UpsertBrandVersion(&metadata->brand_version_list, "Google Chrome",
++                       major_version);
++    UpsertBrandVersion(&metadata->brand_full_version_list, "Google Chrome",
++                       full_version);
++    return;
++  }
++  if (brand == "edge") {
++    UpsertBrandVersion(&metadata->brand_version_list, "Microsoft Edge",
++                       major_version);
++    UpsertBrandVersion(&metadata->brand_full_version_list, "Microsoft Edge",
++                       full_version);
++    metadata->full_version = full_version;
++    return;
++  }
++  if (brand == "opera") {
++    UpsertBrandVersion(&metadata->brand_version_list, "Opera", major_version);
++    UpsertBrandVersion(&metadata->brand_full_version_list, "Opera",
++                       full_version);
++    metadata->full_version = full_version;
++    return;
++  }
++  if (brand == "vivaldi") {
++    UpsertBrandVersion(&metadata->brand_version_list, "Vivaldi", major_version);
++    UpsertBrandVersion(&metadata->brand_full_version_list, "Vivaldi",
++                       full_version);
++    metadata->full_version = full_version;
++  }
++}
++
++
+ uint8_t randomization_salt = 0;
+ 
+ constexpr size_t kMaxRandomNumbers = 21;
+@@ -710,6 +814,8 @@ void UpdateNavigationRequestClientUaHeadersImpl(
+     if (!ua_metadata.has_value())
+       ua_metadata = delegate->GetUserAgentMetadata();
+ 
++    ApplyFingerprintUserAgentMetadata(&ua_metadata.value());
++
+     // The `Sec-CH-UA` client hint is attached to all outgoing requests. This is
+     // (intentionally) different than other client hints.
+     // It's barred behind ShouldAddClientHints to make sure it's controlled by
+diff --git a/third_party/blink/renderer/core/frame/navigator_ua.cc b/third_party/blink/renderer/core/frame/navigator_ua.cc
+index ff46a7f..e589505 100644
+--- a/third_party/blink/renderer/core/frame/navigator_ua.cc
++++ b/third_party/blink/renderer/core/frame/navigator_ua.cc
+@@ -4,7 +4,10 @@
+ 
+ #include "third_party/blink/renderer/core/frame/navigator_ua.h"
+ 
++#include "base/command_line.h"
+ #include "base/compiler_specific.h"
++#include "base/strings/string_util.h"
++#include "components/ungoogled/ungoogled_switches.h"
+ #include "third_party/blink/public/common/features.h"
+ #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
+ #include "third_party/blink/renderer/core/frame/navigator_ua_data.h"
+@@ -12,6 +15,112 @@
+ 
+ namespace blink {
+ 
++namespace {
++
++std::string CanonicalFingerprintPlatform(std::string platform) {
++  platform = base::ToLowerASCII(platform);
++  if (platform == "macos") {
++    return "mac";
++  }
++  return platform;
++}
++
++std::string MajorVersionFrom(std::string version) {
++  const size_t dot = version.find('.');
++  if (dot == std::string::npos) {
++    return version;
++  }
++  return version.substr(0, dot);
++}
++
++void UpsertBrandVersion(blink::UserAgentBrandList* brands,
++                        const std::string& brand,
++                        const std::string& version) {
++  for (auto& item : *brands) {
++    if (item.brand == brand) {
++      item.version = version;
++      return;
++    }
++  }
++  brands->push_back({brand, version});
++}
++
++void ApplyFingerprintUserAgentMetadata(blink::UserAgentMetadata* metadata) {
++  if (!metadata) {
++    return;
++  }
++
++  const base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
++
++  const std::string platform = CanonicalFingerprintPlatform(
++      command_line->GetSwitchValueASCII(switches::kFingerprintPlatform));
++  const std::string custom_platform_version =
++      command_line->GetSwitchValueASCII(switches::kFingerprintPlatformVersion);
++  if (platform == "windows") {
++    metadata->platform = "Windows";
++    metadata->platform_version =
++        custom_platform_version.empty() ? "10.0.0" : custom_platform_version;
++    metadata->architecture = "x86";
++  } else if (platform == "linux") {
++    metadata->platform = "Linux";
++    metadata->platform_version =
++        custom_platform_version.empty() ? "6.0.0" : custom_platform_version;
++    metadata->architecture = "x86";
++  } else if (platform == "mac") {
++    metadata->platform = "macOS";
++    metadata->platform_version =
++        custom_platform_version.empty() ? "15.0.0" : custom_platform_version;
++    metadata->architecture = "arm";
++  }
++
++  if (!command_line->HasSwitch(switches::kFingerprintBrand)) {
++    return;
++  }
++
++  const std::string brand = base::ToLowerASCII(
++      command_line->GetSwitchValueASCII(switches::kFingerprintBrand));
++  std::string full_version =
++      command_line->GetSwitchValueASCII(switches::kFingerprintBrandVersion);
++  if (full_version.empty()) {
++    full_version = metadata->full_version;
++  }
++  if (full_version.empty()) {
++    return;
++  }
++
++  const std::string major_version = MajorVersionFrom(full_version);
++  if (brand == "chrome") {
++    UpsertBrandVersion(&metadata->brand_version_list, "Google Chrome",
++                       major_version);
++    UpsertBrandVersion(&metadata->brand_full_version_list, "Google Chrome",
++                       full_version);
++    return;
++  }
++  if (brand == "edge") {
++    UpsertBrandVersion(&metadata->brand_version_list, "Microsoft Edge",
++                       major_version);
++    UpsertBrandVersion(&metadata->brand_full_version_list, "Microsoft Edge",
++                       full_version);
++    metadata->full_version = full_version;
++    return;
++  }
++  if (brand == "opera") {
++    UpsertBrandVersion(&metadata->brand_version_list, "Opera", major_version);
++    UpsertBrandVersion(&metadata->brand_full_version_list, "Opera",
++                       full_version);
++    metadata->full_version = full_version;
++    return;
++  }
++  if (brand == "vivaldi") {
++    UpsertBrandVersion(&metadata->brand_version_list, "Vivaldi", major_version);
++    UpsertBrandVersion(&metadata->brand_full_version_list, "Vivaldi",
++                       full_version);
++    metadata->full_version = full_version;
++  }
++}
++
++}  // namespace
++
+ NavigatorUAData* NavigatorUA::userAgentData() {
+   NavigatorUAData* ua_data =
+       MakeGarbageCollected<NavigatorUAData>(GetUAExecutionContext());
+@@ -19,6 +128,7 @@ NavigatorUAData* NavigatorUA::userAgentData() {
+     return ua_data;
+ 
+   UserAgentMetadata metadata = GetUserAgentMetadata();
++  ApplyFingerprintUserAgentMetadata(&metadata);
+   ua_data->SetBrandVersionList(metadata.brand_version_list);
+   ua_data->SetMobile(metadata.mobile);
+   ua_data->SetPlatform(String::FromUTF8(metadata.platform),

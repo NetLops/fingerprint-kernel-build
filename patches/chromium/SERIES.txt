@@ -1,1 +1,2 @@
-# copy from the workspace patch queue
+010-core-fingerprint-overrides.patch
+020-user-agent-metadata-overrides.patch
