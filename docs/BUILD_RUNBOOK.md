@@ -38,6 +38,8 @@
   - `.github/workflows/build-mac-arm64.yml`
 - 懒人一键入口：
   - `python3 scripts/run_build.py --manifest manifests/current.json --install --set-default --replace-existing`
+- 后台安装后验收：
+  - `python3 scripts/post_build_verify.py --run-id <gh-run-id> --core-path chrome/chromium-<version>`
 
 ## 最低验收
 
