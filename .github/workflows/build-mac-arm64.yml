@@ -48,6 +48,23 @@ jobs:
           echo "FK_PYTHON=$PWD/.venv/bin/python" >> "$GITHUB_ENV"
           ./.venv/bin/python --version
 
+      - name: Install Python Build Dependencies
+        run: |
+          "$FK_PYTHON" -m pip install PySocks httplib2
+
+      - name: Ensure Brew Build Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          for pkg in coreutils ninja readline; do
+            if brew list "$pkg" >/dev/null 2>&1; then
+              echo "[OK] brew package present: $pkg"
+            else
+              brew install "$pkg"
+            fi
+          done
+
       - name: Compile Scripts
         run: |
           "$FK_PYTHON" -m py_compile scripts/*.py

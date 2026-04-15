@@ -1,1 +1,2 @@
 # copy from the workspace patch queue
+010-ad-hoc-signing-fallback.patch
