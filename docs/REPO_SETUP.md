@@ -14,6 +14,8 @@
   - `https://github.com/NetLops/Ant-Browser`
 - Ant Browser upstream:
   - `https://github.com/black-ant/Ant-Browser`
+- Assets repo:
+  - `https://github.com/NetLops/fingerprint-kernel-assets.git`
 
 ## 推荐关联仓库
 
@@ -33,6 +35,7 @@
 /Users/netlops/Documents/ai/github/
   Ant-Browser/
   fingerprint-kernel-build/
+  fingerprint-kernel-assets/
 ```
 
 ## 初始化顺序
@@ -41,7 +44,8 @@
 2. 把 `kernel-manifest.json` 复制到本仓 `manifests/current.json`
 3. 把 patch queue 放进本仓 `patches/`
 4. 本地跑一遍脚本校验
-5. 再接 GitHub Actions / 自建 runner / 签名
+5. 初始化 `fingerprint-kernel-assets`
+6. 再接 GitHub Actions / 自建 runner / 签名
 
 ## 适合你现在直接执行的命令
 
@@ -86,12 +90,22 @@ python3 -m py_compile scripts/*.py
 python3 scripts/render_upgrade_plan.py --manifest manifests/current.json
 ```
 
+### 5. 初始化 assets 仓
+
+```bash
+cd /Users/netlops/Documents/ai/github/fingerprint-kernel-assets
+git add .
+git commit -m "Initialize assets repo"
+git push -u origin main
+```
+
 ## 建议本地目录
 
 ```text
 ~/github/
   Ant-Browser/
   fingerprint-kernel-build/
+  fingerprint-kernel-assets/
 ```
 
 ## 建议 Git 远程关系

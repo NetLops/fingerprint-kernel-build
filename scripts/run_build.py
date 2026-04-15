@@ -102,6 +102,20 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Replace an existing installed core with the same path.",
     )
+    parser.add_argument(
+        "--archive-assets",
+        action="store_true",
+        help="Archive release metadata into fingerprint-kernel-assets after a successful build.",
+    )
+    parser.add_argument(
+        "--assets-repo",
+        help="Path to the local fingerprint-kernel-assets repository. Default: sibling ../fingerprint-kernel-assets",
+    )
+    parser.add_argument(
+        "--archive-commit",
+        action="store_true",
+        help="Commit staged release metadata inside the assets repo.",
+    )
     return parser.parse_args()
 
 
@@ -411,6 +425,13 @@ def resolve_installer_script(args: argparse.Namespace, repo_root: Path) -> Path:
     return script
 
 
+def resolve_assets_archiver_script(repo_root: Path) -> Path:
+    script = repo_root / "scripts" / "archive_to_assets_repo.py"
+    if not script.is_file():
+        raise RuntimeError(f"assets archiver script not found: {script}")
+    return script
+
+
 def install_built_app(args: argparse.Namespace, repo_root: Path, manifest: dict, run_id: int) -> None:
     if args.dry_run:
         raise RuntimeError("--install cannot be used with --dry-run")
@@ -445,6 +466,24 @@ def install_built_app(args: argparse.Namespace, repo_root: Path, manifest: dict,
     print(f"[OK] installed built app from: {app_path}")
 
 
+def archive_release_assets(args: argparse.Namespace, repo_root: Path, manifest_path: Path, run_id: int) -> None:
+    archiver_script = resolve_assets_archiver_script(repo_root)
+    cmd = [
+        sys.executable,
+        str(archiver_script),
+        "--manifest",
+        str(manifest_path),
+        "--run-id",
+        str(run_id),
+    ]
+    if args.assets_repo:
+        cmd.extend(["--assets-repo", str(Path(args.assets_repo).expanduser().resolve())])
+    if args.archive_commit:
+        cmd.append("--commit")
+    run(cmd, cwd=repo_root)
+    print("[OK] archived release metadata into assets repo")
+
+
 def ensure_prereqs() -> None:
     for binary in ("gh", "git"):
         if shutil.which(binary) is None:
@@ -477,6 +516,8 @@ def main() -> int:
 
     if args.install:
         install_built_app(args, repo_root, manifest, run_id)
+    if args.archive_assets:
+        archive_release_assets(args, repo_root, manifest_path, run_id)
     return 0
 
 

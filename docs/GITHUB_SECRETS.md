@@ -32,6 +32,7 @@
 
 - `BUILD_BOT_PAT`
   - 如果你们后面要拉私有依赖、私有 patch 仓、私有 release 资产
+  - 如果你们后面要自动往 `fingerprint-kernel-assets` 的 GitHub Releases 上传 `.zip` / `.dmg`，也可以复用这类 PAT
 
 ## Runner 要求
 

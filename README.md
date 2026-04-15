@@ -15,11 +15,14 @@
   - [NetLops/fingerprint-kernel-build](https://github.com/NetLops/fingerprint-kernel-build.git)
 - Source fork:
   - [NetLops/Ant-Browser](https://github.com/NetLops/Ant-Browser)
+- Assets repo:
+  - [NetLops/fingerprint-kernel-assets](https://github.com/NetLops/fingerprint-kernel-assets.git)
 
 本地对应目录：
 
 - `/Users/netlops/Documents/ai/github/fingerprint-kernel-build`
 - `/Users/netlops/Documents/ai/github/Ant-Browser`
+- `/Users/netlops/Documents/ai/github/fingerprint-kernel-assets`
 
 ## 建议目录
 
@@ -116,6 +119,20 @@ python3 scripts/run_build.py \
   --replace-existing
 ```
 
+如果还要顺手把 release metadata 归档进 `fingerprint-kernel-assets`：
+
+```bash
+python3 scripts/run_build.py \
+  --manifest manifests/current.json \
+  --existing-run-id 24451150534 \
+  --install \
+  --set-default \
+  --replace-existing \
+  --archive-assets \
+  --assets-repo /Users/netlops/Documents/ai/github/fingerprint-kernel-assets \
+  --archive-commit
+```
+
 ## 这个 skeleton 已经带了什么
 
 - `scripts/apply_patch_series.py`
@@ -126,6 +143,7 @@ python3 scripts/run_build.py \
 - `docs/BUILD_RUNBOOK.md`
 - `docs/REPO_SETUP.md`
 - `docs/GITHUB_SECRETS.md`
+- `docs/ASSETS_REPO.md`
 - `.github/workflows/repo-smoke.yml`
 - `.github/workflows/build-mac-arm64.yml`
 - `.github/workflows/build-mac-arm64.yml.example`

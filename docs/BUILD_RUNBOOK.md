@@ -39,8 +39,12 @@
 - 懒人一键入口：
   - `python3 scripts/run_build.py --manifest manifests/current.json --install --set-default --replace-existing`
   - 如果成功后本地工作区没有现成 `Chromium.app`，脚本会自动下载当前 GitHub run 的 artifact，并尝试从 `.zip` / `.dmg` 里提取可安装的 `Chromium.app`
+  - 如果还要同步 release metadata 到 `fingerprint-kernel-assets`，追加：
+    - `--archive-assets --assets-repo /Users/netlops/Documents/ai/github/fingerprint-kernel-assets --archive-commit`
 - 后台安装后验收：
   - `python3 scripts/post_build_verify.py --run-id <gh-run-id> --core-path chrome/chromium-<version>`
+- 归档 release metadata：
+  - `python3 scripts/archive_to_assets_repo.py --manifest manifests/current.json --run-id <gh-run-id> --assets-repo /Users/netlops/Documents/ai/github/fingerprint-kernel-assets --commit`
 
 ## 最低验收
 
