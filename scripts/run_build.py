@@ -145,6 +145,13 @@ def gh_json(repo_root: Path, args: list[str]) -> object:
     return json.loads(output) if output else None
 
 
+def run_status(repo_root: Path, repo: str, run_id: int) -> dict:
+    info = gh_json(repo_root, ["run", "view", "-R", repo, str(run_id), "--json", "status,conclusion,url"])
+    if not isinstance(info, dict):
+        raise RuntimeError(f"could not fetch workflow run status: {run_id}")
+    return info
+
+
 def dispatch_run(args: argparse.Namespace, repo_root: Path, manifest_path: str) -> tuple[int, str]:
     ref = args.ref or current_git_ref(repo_root)
     head_sha = current_head_sha(repo_root)
@@ -213,23 +220,35 @@ def resolve_run_url(repo_root: Path, repo: str, run_id: int) -> str:
     return f"https://github.com/{repo}/actions/runs/{run_id}"
 
 
+def write_failed_log(repo_root: Path, repo: str, run_id: int, logs_dir: Path) -> None:
+    failed_log_path = logs_dir / f"gh-run-{run_id}-failed.log"
+    proc = subprocess.run(
+        ["gh", "run", "view", "-R", repo, str(run_id), "--log-failed"],
+        cwd=str(repo_root),
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    output = ((proc.stdout or "") + (proc.stderr or "")).strip()
+    if output:
+        failed_log_path.parent.mkdir(parents=True, exist_ok=True)
+        failed_log_path.write_text(output + "\n", encoding="utf-8")
+        print(f"[WARN] failed step log written: {failed_log_path}")
+
+
 def watch_run(repo_root: Path, repo: str, run_id: int, logs_dir: Path) -> None:
+    current = run_status(repo_root, repo, run_id)
+    if current.get("status") == "completed":
+        if current.get("conclusion") == "success":
+            print(f"[OK] workflow run already succeeded: {run_id}")
+            return
+        write_failed_log(repo_root, repo, run_id, logs_dir)
+        raise RuntimeError(f"workflow run failed: {run_id}")
+
     try:
         run(["gh", "run", "watch", "-R", repo, str(run_id), "--exit-status"], cwd=repo_root)
     except subprocess.CalledProcessError as exc:
-        failed_log_path = logs_dir / f"gh-run-{run_id}-failed.log"
-        proc = subprocess.run(
-            ["gh", "run", "view", "-R", repo, str(run_id), "--log-failed"],
-            cwd=str(repo_root),
-            check=False,
-            text=True,
-            capture_output=True,
-        )
-        output = ((proc.stdout or "") + (proc.stderr or "")).strip()
-        if output:
-            failed_log_path.parent.mkdir(parents=True, exist_ok=True)
-            failed_log_path.write_text(output + "\n", encoding="utf-8")
-            print(f"[WARN] failed step log written: {failed_log_path}")
+        write_failed_log(repo_root, repo, run_id, logs_dir)
         raise RuntimeError(f"workflow run failed: {run_id}") from exc
 
 
