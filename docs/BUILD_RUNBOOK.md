@@ -28,6 +28,7 @@
 - 所有失败日志都落到 `logs/`
 - 不要把证书提交进 git
 - patch 冲突修复后及时回写 patch queue
+- CI 构建时要隔离 runner 的全局 Cargo 配置，避免继承 `~/.cargo/config.toml` 里的私有镜像或 `replace-with`
 
 ## 自动化入口
 

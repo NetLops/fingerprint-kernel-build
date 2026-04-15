@@ -104,7 +104,51 @@ jobs:
         run: |
           set -euo pipefail
           cd "$FK_PACKAGING_REPO_DIR"
+          FK_BUILD_HOME="$PWD/.fk-build-home"
+          mkdir -p "$FK_BUILD_HOME/.cargo"
+          cat > "$FK_BUILD_HOME/.cargo/config.toml" <<'EOF'
+          [registries.crates-io]
+          protocol = "sparse"
+
+          [source.crates-io]
+          registry = "sparse+https://index.crates.io/"
+
+          [net]
+          git-fetch-with-cli = true
+          EOF
+          export HOME="$FK_BUILD_HOME"
+          echo "[OK] isolated HOME: $HOME"
+          echo "[OK] cargo config: $HOME/.cargo/config.toml"
+
+          FK_LOCAL_CARGO_HOME="$FK_PACKAGING_REPO_DIR/build/src/third_party/rust-src/cargo-home"
+          (
+            i=0
+            while [ ! -d "$FK_LOCAL_CARGO_HOME" ] && [ "$i" -lt 1800 ]; do
+              i=$((i + 1))
+              sleep 2
+            done
+
+            if [ -d "$FK_LOCAL_CARGO_HOME" ]; then
+              cat > "$FK_LOCAL_CARGO_HOME/config.toml" <<'EOF'
+              [registries.crates-io]
+              protocol = "sparse"
+
+              [source.crates-io]
+              registry = "sparse+https://index.crates.io/"
+
+              [net]
+              git-fetch-with-cli = true
+              EOF
+              echo "[OK] wrote local cargo override: $FK_LOCAL_CARGO_HOME/config.toml"
+            else
+              echo "[WARN] rust cargo-home did not appear before timeout"
+            fi
+          ) &
+          FK_CARGO_HELPER_PID=$!
+          trap 'kill "$FK_CARGO_HELPER_PID" >/dev/null 2>&1 || true' EXIT
+
           ./build.sh arm64 2>&1 | tee "$FK_LOGS_DIR/build.log"
+          wait "$FK_CARGO_HELPER_PID" || true
 
       - name: Smoke Check Built App
         if: ${{ inputs.dry_run != 'true' }}
