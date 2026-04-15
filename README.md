@@ -87,12 +87,41 @@ python3 tools/fingerprint-kernel/bootstrap-build-repo.py \
 
 确认自建 runner、patch queue、签名环境都准备好后，再把 `dry_run` 切成 `false` 触发真实编译。
 
+如果你想一把梭，直接用：
+
+```bash
+cd /Users/netlops/Documents/ai/github/fingerprint-kernel-build
+python3 scripts/run_build.py \
+  --manifest manifests/current.json \
+  --install \
+  --set-default \
+  --replace-existing
+```
+
+它会自动：
+
+1. dispatch GitHub Actions 构建
+2. watch 当前 run 到结束
+3. 成功后把 `Chromium.app` 装进本机 Ant Browser
+
+如果 workflow 已经在跑，也可以直接接管现有 run：
+
+```bash
+python3 scripts/run_build.py \
+  --manifest manifests/current.json \
+  --existing-run-id 24448462058 \
+  --install \
+  --set-default \
+  --replace-existing
+```
+
 ## 这个 skeleton 已经带了什么
 
 - `scripts/apply_patch_series.py`
 - `scripts/prepare_build_context.py`
 - `scripts/render_upgrade_plan.py`
 - `scripts/run_smoke_checks.py`
+- `scripts/run_build.py`
 - `docs/BUILD_RUNBOOK.md`
 - `docs/REPO_SETUP.md`
 - `docs/GITHUB_SECRETS.md`

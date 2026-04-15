@@ -35,6 +35,8 @@
   - `python3 scripts/prepare_build_context.py --manifest manifests/current.json`
 - GitHub Actions 手动触发：
   - `.github/workflows/build-mac-arm64.yml`
+- 懒人一键入口：
+  - `python3 scripts/run_build.py --manifest manifests/current.json --install --set-default --replace-existing`
 
 ## 最低验收
 
