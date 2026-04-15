@@ -1,0 +1,70 @@
+diff --git a/retrieve_and_unpack_resource.sh b/retrieve_and_unpack_resource.sh
+index a1fb3a5..014abbe 100755
+--- a/retrieve_and_unpack_resource.sh
++++ b/retrieve_and_unpack_resource.sh
+@@ -39,6 +39,35 @@ shift "$(($OPTIND -1))"
+ 
+ _target_cpu=${1:-arm64}
+ 
++_cleanup_unpack_outputs() {
++    local _ini_path="$1"
++    mapfile -t _output_paths < <(
++        python3 - "$_ini_path" <<'PY'
++import configparser
++import sys
++
++config = configparser.ConfigParser(interpolation=configparser.BasicInterpolation())
++config.read(sys.argv[1], encoding="utf-8")
++
++seen = set()
++for section in config.sections():
++    output_path = config.get(section, "output_path", fallback="").strip()
++    if output_path and output_path not in seen:
++        print(output_path)
++        seen.add(output_path)
++PY
++    )
++
++    local _relative_path
++    for _relative_path in "${_output_paths[@]}"; do
++        local _target_path="$_src_dir/$_relative_path"
++        if [[ -e "$_target_path" ]]; then
++            echo "INFO: Removing existing unpack target: $_target_path"
++            rm -rf "$_target_path"
++        fi
++    done
++}
++
+ if $retrieve_generic; then
+     if $clone; then
+         if [[ $_target_cpu == "arm64" ]]; then
+@@ -55,6 +84,7 @@ if $retrieve_generic; then
+ 
+     # Retrieve and unpack general resources
+     python3 "$_main_repo/utils/downloads.py" retrieve -i "$_root_dir/downloads.ini" -c "$_download_cache"
++    _cleanup_unpack_outputs "$_root_dir/downloads.ini"
+     python3 "$_main_repo/utils/downloads.py" unpack -i "$_root_dir/downloads.ini" -c "$_download_cache" "$_src_dir"
+ fi
+ 
+@@ -69,17 +99,21 @@ if $retrieve_arch_specific; then
+     if [[ $(uname -m) == "arm64" ]]; then
+         python3 "$_main_repo/utils/downloads.py" retrieve -i "$_root_dir/downloads-arm64.ini" -c "$_download_cache"
+         mkdir -p "$_src_dir/third_party/node/mac_arm64/node-darwin-arm64/"
++        _cleanup_unpack_outputs "$_root_dir/downloads-arm64.ini"
+         python3 "$_main_repo/utils/downloads.py" unpack -i "$_root_dir/downloads-arm64.ini" -c "$_download_cache" "$_src_dir"
+         if [[ $_target_cpu == "x86_64" ]]; then
+             python3 "$_main_repo/utils/downloads.py" retrieve -i "$_root_dir/downloads-x86-64-rustlib.ini" -c "$_download_cache"
++            _cleanup_unpack_outputs "$_root_dir/downloads-x86-64-rustlib.ini"
+             python3 "$_main_repo/utils/downloads.py" unpack -i "$_root_dir/downloads-x86-64-rustlib.ini" -c "$_download_cache" "$_src_dir"
+         fi
+     else
+         python3 "$_main_repo/utils/downloads.py" retrieve -i "$_root_dir/downloads-x86-64.ini" -c "$_download_cache"
+         mkdir -p "$_src_dir/third_party/node/mac/node-darwin-x64/"
++        _cleanup_unpack_outputs "$_root_dir/downloads-x86-64.ini"
+         python3 "$_main_repo/utils/downloads.py" unpack -i "$_root_dir/downloads-x86-64.ini" -c "$_download_cache" "$_src_dir"
+         if [[ $_target_cpu == "arm64" ]]; then
+             python3 "$_main_repo/utils/downloads.py" retrieve -i "$_root_dir/downloads-arm64-rustlib.ini" -c "$_download_cache"
++            _cleanup_unpack_outputs "$_root_dir/downloads-arm64-rustlib.ini"
+             python3 "$_main_repo/utils/downloads.py" unpack -i "$_root_dir/downloads-arm64-rustlib.ini" -c "$_download_cache" "$_src_dir"
+         fi
+     fi
