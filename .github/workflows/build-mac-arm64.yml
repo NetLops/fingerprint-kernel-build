@@ -49,10 +49,12 @@ jobs:
           ./.venv/bin/python --version
 
       - name: Compile Scripts
-        run: "$FK_PYTHON" -m py_compile scripts/*.py
+        run: |
+          "$FK_PYTHON" -m py_compile scripts/*.py
 
       - name: Show Upgrade Plan
-        run: "$FK_PYTHON" scripts/render_upgrade_plan.py --manifest "${{ inputs.manifest_path }}"
+        run: |
+          "$FK_PYTHON" scripts/render_upgrade_plan.py --manifest "${{ inputs.manifest_path }}"
 
       - name: Check Runner Prerequisites
         shell: bash
