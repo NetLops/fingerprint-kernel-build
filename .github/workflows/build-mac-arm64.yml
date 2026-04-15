@@ -34,11 +34,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Python Venv
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHON_BOOTSTRAP="/opt/homebrew/bin/python3"
+          if [ ! -x "$PYTHON_BOOTSTRAP" ]; then
+            PYTHON_BOOTSTRAP="$(command -v python3)"
+          fi
+          "$PYTHON_BOOTSTRAP" -m venv .venv
+          ./.venv/bin/python -m pip install --upgrade pip
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          echo "FK_PYTHON=$PWD/.venv/bin/python" >> "$GITHUB_ENV"
+          ./.venv/bin/python --version
+
       - name: Compile Scripts
-        run: python3 -m py_compile scripts/*.py
+        run: "$FK_PYTHON" -m py_compile scripts/*.py
 
       - name: Show Upgrade Plan
-        run: python3 scripts/render_upgrade_plan.py --manifest "${{ inputs.manifest_path }}"
+        run: "$FK_PYTHON" scripts/render_upgrade_plan.py --manifest "${{ inputs.manifest_path }}"
 
       - name: Check Runner Prerequisites
         shell: bash
@@ -57,7 +71,7 @@ jobs:
           if [ -n "${{ inputs.packaging_ref }}" ]; then
             args+=(--packaging-ref "${{ inputs.packaging_ref }}")
           fi
-          python3 scripts/prepare_build_context.py "${args[@]}"
+          "$FK_PYTHON" scripts/prepare_build_context.py "${args[@]}"
           git -C "$FK_PACKAGING_REPO_DIR" status --short || true
 
       - name: Build Chromium.app
@@ -71,7 +85,7 @@ jobs:
       - name: Smoke Check Built App
         if: ${{ inputs.dry_run != 'true' }}
         run: |
-          python3 scripts/run_smoke_checks.py \
+          "$FK_PYTHON" scripts/run_smoke_checks.py \
             --app "$FK_PACKAGING_REPO_DIR/build/src/out/Default/Chromium.app"
 
       - name: Collect Build Outputs

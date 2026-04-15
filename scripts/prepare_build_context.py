@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from typing import Optional
 
 
 NETLOPS_BLOCK_BEGIN = "# >>> netlops custom patches >>>"
@@ -33,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run(cmd: list[str], cwd: Path | None = None) -> None:
+def run(cmd: list[str], cwd: Optional[Path] = None) -> None:
     subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=True)
 
 
