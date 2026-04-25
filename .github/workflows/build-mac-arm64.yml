@@ -121,9 +121,11 @@ jobs:
           git-fetch-with-cli = true
           EOF
           export HOME="$FK_BUILD_HOME"
+          export CARGO_REGISTRIES_CRATES_IO_PROTOCOL="sparse"
           export FK_NINJA_JOBS="${{ inputs.ninja_jobs }}"
           echo "[OK] isolated HOME: $HOME"
           echo "[OK] cargo config: $HOME/.cargo/config.toml"
+          echo "[OK] cargo crates.io protocol: $CARGO_REGISTRIES_CRATES_IO_PROTOCOL"
           echo "[OK] FK_NINJA_JOBS: $FK_NINJA_JOBS"
 
           FK_LOCAL_CARGO_HOME="$FK_PACKAGING_REPO_DIR/build/src/third_party/rust-src/cargo-home"
@@ -135,6 +137,7 @@ jobs:
             done
 
             if [ -d "$FK_LOCAL_CARGO_HOME" ]; then
+              rm -rf "$FK_LOCAL_CARGO_HOME/registry/index" "$FK_LOCAL_CARGO_HOME/registry/cache"
               {
                 echo "[registries.crates-io]"
                 echo 'protocol = "sparse"'
@@ -145,6 +148,7 @@ jobs:
                 echo "[net]"
                 echo "git-fetch-with-cli = true"
               } > "$FK_LOCAL_CARGO_HOME/config.toml"
+              echo "[OK] removed stale cargo registry index/cache under: $FK_LOCAL_CARGO_HOME"
               echo "[OK] wrote local cargo override: $FK_LOCAL_CARGO_HOME/config.toml"
             else
               echo "[WARN] rust cargo-home did not appear before timeout"
