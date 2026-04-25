@@ -1,0 +1,109 @@
+diff --git a/components/ungoogled/ungoogled_switches.cc b/components/ungoogled/ungoogled_switches.cc
+index 90ea10e..2d1d7a9 100644
+--- a/components/ungoogled/ungoogled_switches.cc
++++ b/components/ungoogled/ungoogled_switches.cc
+@@ -28,6 +28,10 @@ const char kFingerprintHardwareConcurrency[] = "fingerprint-hardware-concurrency
+ const char kFingerprintDeviceMemory[] = "fingerprint-device-memory";
+ const char kFingerprintColorDepth[] = "fingerprint-color-depth";
+ 
++// WebGL GPU identity overrides.
++const char kFingerprintGpuVendor[] = "fingerprint-gpu-vendor";
++const char kFingerprintGpuRenderer[] = "fingerprint-gpu-renderer";
++
+ // Timezone override.
+ const char kFingerprintTimezone[] = "timezone";
+ 
+diff --git a/components/ungoogled/ungoogled_switches.h b/components/ungoogled/ungoogled_switches.h
+index 7c22435..a8de76c 100644
+--- a/components/ungoogled/ungoogled_switches.h
++++ b/components/ungoogled/ungoogled_switches.h
+@@ -23,6 +23,8 @@ COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintHardwareConcurrency[];
+ COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintDeviceMemory[];
+ COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintColorDepth[];
+ COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintTimezone[];
++COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintGpuVendor[];
++COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintGpuRenderer[];
+ 
+ }
+ 
+diff --git a/content/browser/renderer_host/render_process_host_impl.cc b/content/browser/renderer_host/render_process_host_impl.cc
+index 64d765a..26e72d8 100644
+--- a/content/browser/renderer_host/render_process_host_impl.cc
++++ b/content/browser/renderer_host/render_process_host_impl.cc
+@@ -3721,6 +3721,8 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
+       switches::kFingerprintHardwareConcurrency,
+       switches::kFingerprintDeviceMemory,
+       switches::kFingerprintColorDepth,
++      switches::kFingerprintGpuVendor,
++      switches::kFingerprintGpuRenderer,
+       switches::kFingerprintTimezone,
+       switches::kForceDeviceScaleFactor,
+       switches::kForceDisplayColorProfile,
+diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+index e830cd22ba..f2e4e4bd78 100644
+--- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
++++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+@@ -27,7 +27,9 @@
+ 
+ #include <memory>
++#include <string>
+ #include <utility>
+ 
++#include "base/command_line.h"
+ #include "base/bit_cast.h"
+ #include "base/byte_size.h"
+ #include "base/compiler_specific.h"
+@@ -49,6 +50,7 @@
+ #include "gpu/config/gpu_feature_info.h"
+ #include "media/base/video_frame.h"
+ #include "media/renderers/paint_canvas_video_renderer.h"
++#include "components/ungoogled/ungoogled_switches.h"
+ #include "third_party/blink/public/common/features.h"
+ #include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
+ #include "third_party/blink/public/mojom/gpu/gpu.mojom-blink.h"
+@@ -3978,7 +3980,21 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+     case WebGLDebugRendererInfo::kUnmaskedRendererWebgl:
+       if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
+-        if (base::FeatureList::IsEnabled(blink::features::kSpoofWebGLInfo))
+-          return WebGLAny(script_state, String(blink::features::kSpoofWebGLRendererParam.Get()));
++        const base::CommandLine* command_line =
++            base::CommandLine::ForCurrentProcess();
++        const std::string renderer_override =
++            command_line->GetSwitchValueASCII(
++                switches::kFingerprintGpuRenderer);
++        if (base::FeatureList::IsEnabled(blink::features::kSpoofWebGLInfo) ||
++            !renderer_override.empty()) {
++          // Keep spoofed renderer reads on the native GL-backed path. Returning
++          // a cached string directly is much faster than real ANGLE/Metal reads
++          // and is easy for timing probes to classify as a shortcut.
++          (void)ContextGL()->GetString(GL_RENDERER);
++          const std::string renderer = renderer_override.empty()
++                                           ? blink::features::kSpoofWebGLRendererParam.Get()
++                                           : renderer_override;
++          return WebGLAny(script_state, String(renderer));
++        }
+         return WebGLAny(script_state,
+                         String(ContextGL()->GetString(GL_RENDERER)));
+       }
+@@ -3989,7 +4004,19 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+     case WebGLDebugRendererInfo::kUnmaskedVendorWebgl:
+       if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
+-        if (base::FeatureList::IsEnabled(blink::features::kSpoofWebGLInfo))
+-          return WebGLAny(script_state, String(blink::features::kSpoofWebGLVendorParam.Get()));
++        const base::CommandLine* command_line =
++            base::CommandLine::ForCurrentProcess();
++        const std::string vendor_override =
++            command_line->GetSwitchValueASCII(switches::kFingerprintGpuVendor);
++        if (base::FeatureList::IsEnabled(blink::features::kSpoofWebGLInfo) ||
++            !vendor_override.empty()) {
++          // Mirror the renderer path so vendor reads do not expose a cached
++          // spoofing branch either.
++          (void)ContextGL()->GetString(GL_VENDOR);
++          const std::string vendor = vendor_override.empty()
++                                         ? blink::features::kSpoofWebGLVendorParam.Get()
++                                         : vendor_override;
++          return WebGLAny(script_state, String(vendor));
++        }
+         return WebGLAny(script_state,
+                         String(ContextGL()->GetString(GL_VENDOR)));
+       }

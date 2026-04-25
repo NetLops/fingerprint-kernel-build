@@ -1,2 +1,3 @@
 010-core-fingerprint-overrides.patch
 020-user-agent-metadata-overrides.patch
+030-webgl-gpu-spoof-switches-and-timing.patch
