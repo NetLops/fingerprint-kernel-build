@@ -6,13 +6,10 @@ diff --git a/tools/rust/build_bindgen.py b/tools/rust/build_bindgen.py
  ]
  
 +BINDGEN_CARGO_CONFIG = '''[source.crates-io]
-+replace-with = "crates-io-sparse"
++replace-with = "rsproxy-sparse"
 +
-+[source.crates-io-sparse]
-+registry = "sparse+https://index.crates.io/"
-+
-+[registries.crates-io]
-+protocol = "sparse"
++[source.rsproxy-sparse]
++registry = "sparse+https://rsproxy.cn/index/"
 +
 +[net]
 +git-fetch-with-cli = false
