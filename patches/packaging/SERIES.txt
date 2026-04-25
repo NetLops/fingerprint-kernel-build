@@ -1,3 +1,4 @@
 # copy from the workspace patch queue
 010-ad-hoc-signing-fallback.patch
 020-clean-download-output-paths-before-unpack.patch
+030-limit-ninja-parallelism.patch
