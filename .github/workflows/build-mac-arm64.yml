@@ -135,16 +135,16 @@ jobs:
             done
 
             if [ -d "$FK_LOCAL_CARGO_HOME" ]; then
-              cat > "$FK_LOCAL_CARGO_HOME/config.toml" <<'EOF'
-              [registries.crates-io]
-              protocol = "sparse"
-
-              [source.crates-io]
-              registry = "sparse+https://index.crates.io/"
-
-              [net]
-              git-fetch-with-cli = true
-              EOF
+              {
+                echo "[registries.crates-io]"
+                echo 'protocol = "sparse"'
+                echo
+                echo "[source.crates-io]"
+                echo 'registry = "sparse+https://index.crates.io/"'
+                echo
+                echo "[net]"
+                echo "git-fetch-with-cli = true"
+              } > "$FK_LOCAL_CARGO_HOME/config.toml"
               echo "[OK] wrote local cargo override: $FK_LOCAL_CARGO_HOME/config.toml"
             else
               echo "[WARN] rust cargo-home did not appear before timeout"
