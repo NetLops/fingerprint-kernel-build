@@ -23,6 +23,14 @@ on:
         description: Ninja job count passed to build.py
         required: false
         default: "2"
+      runs_on_json:
+        description: JSON array/string for runs-on. Use a larger Windows runner when available.
+        required: false
+        default: '["windows-2022"]'
+      build_timeout_hours:
+        description: build.py ninja timeout override in hours
+        required: false
+        default: "5.75"
 
 concurrency:
   group: build-windows-amd64-${{ github.ref }}-${{ inputs.manifest_path }}
@@ -30,7 +38,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: ${{ fromJSON(inputs.runs_on_json) }}
     timeout-minutes: 360
     defaults:
       run:
@@ -112,6 +120,20 @@ jobs:
         run: |
           Set-Location "$env:FK_BUILD_REPO_ROOT"
           Set-Location "$env:FK_PACKAGING_REPO_DIR"
+          $buildPy = Join-Path "$env:FK_PACKAGING_REPO_DIR" "build.py"
+          $timeoutHours = "${{ inputs.build_timeout_hours }}"
+          $text = Get-Content $buildPy -Raw
+          $old = "timeout=3.5*60*60"
+          $new = "timeout=$timeoutHours*60*60"
+          if ($text.Contains($old)) {
+            $text = $text.Replace($old, $new)
+            Set-Content -Path $buildPy -Value $text -NoNewline
+            Write-Host "[OK] patched build.py timeout to $timeoutHours hours"
+          } elseif ($text.Contains($new)) {
+            Write-Host "[OK] build.py timeout already patched to $timeoutHours hours"
+          } else {
+            throw "Could not find build.py timeout marker: $old"
+          }
           python -m pip install httplib2==0.22.0
           python build.py --ci -j "${{ inputs.ninja_jobs }}" 2>&1 | Tee-Object -FilePath "$env:FK_LOGS_DIR\build.log"
 

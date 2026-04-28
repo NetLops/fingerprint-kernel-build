@@ -27,6 +27,10 @@ on:
         description: JSON array/string for runs-on. Use self-hosted large Linux runner when available.
         required: true
         default: '["ubuntu-latest"]'
+      ninja_task_timeout_seconds:
+        description: Max seconds for the portablelinux ninja build timeout wrapper
+        required: false
+        default: "20700"
 
 concurrency:
   group: build-linux-arm64-${{ github.ref }}-${{ inputs.manifest_path }}
@@ -107,6 +111,21 @@ jobs:
         run: |
           set -euo pipefail
           cd "$FK_PACKAGING_REPO_DIR"
+          export NINJA_TASK_TIMEOUT_SECONDS="${{ inputs.ninja_task_timeout_seconds }}"
+          if [ -n "${{ inputs.ninja_task_timeout_seconds }}" ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          import os
+          seconds = os.environ["NINJA_TASK_TIMEOUT_SECONDS"]
+          path = Path(".github/scripts/build.sh")
+          text = path.read_text()
+          old = "_task_timeout=18000"
+          new = f"_task_timeout={seconds}"
+          if old not in text and new not in text:
+              raise SystemExit(f"could not find {old!r} in {path}")
+          path.write_text(text.replace(old, new, 1))
+          PY
+          fi
           export ARCH="${FK_TARGET_ARCH_INPUT}"
           export _prepare_only=false
           export _use_existing_image=true
