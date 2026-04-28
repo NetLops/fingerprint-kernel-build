@@ -3,8 +3,9 @@ import argparse
 from pathlib import Path
 
 
-DEBIAN_MIRROR = "https://mirrors.tuna.tsinghua.edu.cn/debian"
-DEBIAN_SECURITY_MIRROR = "https://mirrors.tuna.tsinghua.edu.cn/debian-security"
+DEBIAN_MIRROR = "http://mirrors.tuna.tsinghua.edu.cn/debian"
+DEBIAN_SECURITY_MIRROR = "http://mirrors.tuna.tsinghua.edu.cn/debian-security"
+DOCKER_DEBIAN_IMAGE = "docker.m.daocloud.io/library/debian:trixie-slim"
 NPM_MIRROR = "https://registry.npmmirror.com"
 CARGO_MIRROR = "sparse+https://rsproxy.cn/index/"
 
@@ -23,10 +24,11 @@ def parse_args() -> argparse.Namespace:
 
 def patch_dockerfile(path: Path, include_npm: bool) -> None:
     text = path.read_text(encoding="utf-8")
+    text = text.replace("FROM debian:trixie-slim\n", f"FROM {DOCKER_DEBIAN_IMAGE}\n", 1)
     if "mirrors.tuna.tsinghua.edu.cn/debian" not in text:
         text = text.replace(
-            "FROM debian:trixie-slim\n",
-            "FROM debian:trixie-slim\n\n"
+            f"FROM {DOCKER_DEBIAN_IMAGE}\n",
+            f"FROM {DOCKER_DEBIAN_IMAGE}\n\n"
             "RUN sed -i "
             "'s|https\\?://deb.debian.org/debian|"
             f"{DEBIAN_MIRROR}"
