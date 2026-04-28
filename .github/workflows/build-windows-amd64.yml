@@ -42,9 +42,15 @@ jobs:
       - name: Enable Long Paths
         run: |
           git config --system core.longpaths true
+          git config --global core.longpaths true
           New-Item -ItemType Directory -Force -Path C:\tmp | Out-Null
           "TMP=C:\tmp" >> $env:GITHUB_ENV
           "TEMP=C:\tmp" >> $env:GITHUB_ENV
+          if (Get-PSDrive X -ErrorAction SilentlyContinue) {
+            subst X: /D
+          }
+          subst X: "$env:GITHUB_WORKSPACE"
+          "FK_BUILD_REPO_ROOT=X:\" >> $env:GITHUB_ENV
           try {
             Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name LongPathsEnabled -Value 1 -Type DWord
           } catch {
@@ -58,14 +64,18 @@ jobs:
 
       - name: Compile Scripts
         run: |
+          Set-Location "$env:FK_BUILD_REPO_ROOT"
           $files = Get-ChildItem scripts -Filter *.py | ForEach-Object { $_.FullName }
           python -m py_compile @files
 
       - name: Show Upgrade Plan
-        run: python scripts/render_upgrade_plan.py --manifest "${{ inputs.manifest_path }}"
+        run: |
+          Set-Location "$env:FK_BUILD_REPO_ROOT"
+          python scripts/render_upgrade_plan.py --manifest "${{ inputs.manifest_path }}"
 
       - name: Check Runner Prerequisites
         run: |
+          Set-Location "$env:FK_BUILD_REPO_ROOT"
           foreach ($bin in @("git", "python", "7z")) {
             $cmd = Get-Command $bin -ErrorAction Stop
             Write-Host "[OK] found $bin -> $($cmd.Source)"
@@ -78,7 +88,8 @@ jobs:
 
       - name: Prepare Build Context
         run: |
-          $args = @("--manifest", "${{ inputs.manifest_path }}", "--repo-root", "$PWD")
+          Set-Location "$env:FK_BUILD_REPO_ROOT"
+          $args = @("--manifest", "${{ inputs.manifest_path }}", "--repo-root", "$env:FK_BUILD_REPO_ROOT")
           if ("${{ inputs.packaging_ref }}" -ne "") {
             $args += @("--packaging-ref", "${{ inputs.packaging_ref }}")
           }
@@ -86,12 +97,14 @@ jobs:
 
       - name: Show Prepared Repo Status
         run: |
+          Set-Location "$env:FK_BUILD_REPO_ROOT"
           git -C "$env:FK_PACKAGING_REPO_DIR" status --short
           Get-Content "$env:FK_LOGS_DIR\prepare-build-context.json" -Tail 120
 
       - name: Build And Package Windows AMD64
         if: ${{ inputs.dry_run != 'true' }}
         run: |
+          Set-Location "$env:FK_BUILD_REPO_ROOT"
           Set-Location "$env:FK_PACKAGING_REPO_DIR"
           python -m pip install httplib2==0.22.0
           python build.py --ci -j "${{ inputs.ninja_jobs }}" 2>&1 | Tee-Object -FilePath "$env:FK_LOGS_DIR\build.log"
@@ -99,6 +112,7 @@ jobs:
       - name: Smoke Check Windows AMD64 Artifacts
         if: ${{ inputs.dry_run != 'true' }}
         run: |
+          Set-Location "$env:FK_BUILD_REPO_ROOT"
           python scripts/run_windows_smoke_checks.py `
             --build-dir "$env:FK_PACKAGING_REPO_DIR\build" `
             --target-arch x64
@@ -106,6 +120,7 @@ jobs:
       - name: Collect Build Outputs
         if: always()
         run: |
+          Set-Location "$env:FK_BUILD_REPO_ROOT"
           New-Item -ItemType Directory -Force -Path artifacts\last-run | Out-Null
           New-Item -ItemType Directory -Force -Path logs\last-run | Out-Null
           if ($env:FK_LOGS_DIR -and (Test-Path $env:FK_LOGS_DIR)) {
