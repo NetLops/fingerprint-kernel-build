@@ -186,7 +186,7 @@ index d304b0a..64d765a 100644
 diff --git a/third_party/blink/common/device_memory/approximated_device_memory.cc b/third_party/blink/common/device_memory/approximated_device_memory.cc
 --- a/third_party/blink/common/device_memory/approximated_device_memory.cc
 +++ b/third_party/blink/common/device_memory/approximated_device_memory.cc
-@@ -3,16 +3,48 @@
+@@ -4,13 +4,37 @@
 
  #include "third_party/blink/public/common/device_memory/approximated_device_memory.h"
 
@@ -224,7 +224,7 @@ diff --git a/third_party/blink/common/device_memory/approximated_device_memory.c
  // static
  float ApproximatedDeviceMemory::approximated_device_memory_gb_ = 0.0;
  int64_t ApproximatedDeviceMemory::physical_memory_mb_ = 0;
-@@ -21,6 +53,16 @@ void ApproximatedDeviceMemory::Initialize() {
+@@ -20,6 +44,14 @@ void ApproximatedDeviceMemory::Initialize() {
    if (approximated_device_memory_gb_ > 0.0)
      return;
 
