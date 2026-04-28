@@ -1,0 +1,103 @@
+"**":
+  push:
+    linux-arm64:
+      runner:
+        tags: cnb:arch:arm64:v8
+        cpus: 16
+      services:
+        - docker
+      env:
+        FK_CNB_USE_MIRRORS: "true"
+        FK_CNB_DOCKER_CPUS: "14"
+        FK_CNB_NINJA_TASK_TIMEOUT_SECONDS: "41400"
+      stages:
+        - name: prepare linux arm64 build tree
+          timeout: 6h
+          script: |
+            bash scripts/run_cnb_linux_build.sh \
+              --manifest manifests/current-linux-arm64.json \
+              --arch arm64 \
+              --output-name linux-arm64 \
+              --phase prepare
+        - name: build linux arm64 chromium slice
+          timeout: 12h
+          script: |
+            bash scripts/run_cnb_linux_build.sh \
+              --manifest manifests/current-linux-arm64.json \
+              --arch arm64 \
+              --output-name linux-arm64 \
+              --phase build-slice
+        - name: finish linux arm64 chromium build
+          timeout: 12h
+          script: |
+            bash scripts/run_cnb_linux_build.sh \
+              --manifest manifests/current-linux-arm64.json \
+              --arch arm64 \
+              --output-name linux-arm64 \
+              --phase build-final
+        - name: package linux arm64 artifacts
+          timeout: 2h
+          script: |
+            bash scripts/run_cnb_linux_build.sh \
+              --manifest manifests/current-linux-arm64.json \
+              --arch arm64 \
+              --output-name linux-arm64 \
+              --phase package
+      endStages:
+        - name: upload linux arm64 outputs
+          image: cnbcool/attachments:latest
+          settings:
+            attachments:
+              - artifacts/cnb/linux-arm64
+              - logs/cnb/linux-arm64
+
+    linux-amd64:
+      runner:
+        tags: cnb:arch:amd64
+        cpus: 32
+      services:
+        - docker
+      env:
+        FK_CNB_USE_MIRRORS: "true"
+        FK_CNB_DOCKER_CPUS: "30"
+        FK_CNB_NINJA_TASK_TIMEOUT_SECONDS: "41400"
+      stages:
+        - name: prepare linux amd64 build tree
+          timeout: 6h
+          script: |
+            bash scripts/run_cnb_linux_build.sh \
+              --manifest manifests/current-linux-amd64.json \
+              --arch x64 \
+              --output-name linux-amd64 \
+              --phase prepare
+        - name: build linux amd64 chromium slice
+          timeout: 12h
+          script: |
+            bash scripts/run_cnb_linux_build.sh \
+              --manifest manifests/current-linux-amd64.json \
+              --arch x64 \
+              --output-name linux-amd64 \
+              --phase build-slice
+        - name: finish linux amd64 chromium build
+          timeout: 12h
+          script: |
+            bash scripts/run_cnb_linux_build.sh \
+              --manifest manifests/current-linux-amd64.json \
+              --arch x64 \
+              --output-name linux-amd64 \
+              --phase build-final
+        - name: package linux amd64 artifacts
+          timeout: 2h
+          script: |
+            bash scripts/run_cnb_linux_build.sh \
+              --manifest manifests/current-linux-amd64.json \
+              --arch x64 \
+              --output-name linux-amd64 \
+              --phase package
+      endStages:
+        - name: upload linux amd64 outputs
+          image: cnbcool/attachments:latest
+          settings:
+            attachments:
+              - artifacts/cnb/linux-amd64
+              - logs/cnb/linux-amd64
