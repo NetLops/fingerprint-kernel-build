@@ -2,3 +2,5 @@
 020-user-agent-metadata-overrides.patch
 025-bindgen-force-sparse-crates-io.patch
 030-webgl-gpu-spoof-switches-and-timing.patch
+035-webrtc-public-ip-candidate-spoof.patch
+036-macos-keychain-startup-fallback.patch

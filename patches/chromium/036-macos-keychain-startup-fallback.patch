@@ -1,0 +1,99 @@
+diff --git a/components/os_crypt/common/keychain_password_mac.mm b/components/os_crypt/common/keychain_password_mac.mm
+index 66e0c5e977..3ca5723593 100644
+--- a/components/os_crypt/common/keychain_password_mac.mm
++++ b/components/os_crypt/common/keychain_password_mac.mm
+@@ -7,14 +7,15 @@
+ #import <Security/Security.h>
+ 
+ #include <atomic>
++#include <optional>
+ 
+ #include "base/apple/osstatus_logging.h"
+ #include "base/apple/scoped_cftyperef.h"
+-#include "base/base64.h"
+-#include "base/containers/span.h"
++#include "base/command_line.h"
++#include "base/files/file_path.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/no_destructor.h"
+-#include "base/rand_util.h"
++#include "base/process/launch.h"
+ #include "base/strings/string_view_util.h"
+ #include "base/types/expected.h"
+ #include "build/branding_buildflags.h"
+@@ -56,26 +57,35 @@ enum class FindGenericPasswordResult {
+ // recover from previous failures.
+ std::atomic<OSStatus> g_last_keychain_error{noErr};
+ 
+-// Generates a random password and adds it to the Keychain.  The added password
+-// is returned from the function.  If an error occurs, the OSStatus is
+-// returned.
+-base::expected<std::string, OSStatus> AddRandomPasswordToKeychain(
+-    KeychainV2& keychain,
++std::optional<std::string> GetPasswordFromSecurityTool(
+     const std::string& service_name,
+     const std::string& account_name) {
+-  // Generate a password with 128 bits of randomness.
+-  const int kBytes = 128 / 8;
+-  std::string password = base::Base64Encode(base::RandBytesAsVector(kBytes));
+-
+-  OSStatus error = keychain.AddGenericPassword(service_name, account_name,
+-                                               base::as_byte_span(password));
+-
+-  if (error != noErr) {
+-    OSSTATUS_DLOG(ERROR, error) << "Keychain add failed";
+-    return base::unexpected(error);
++  base::CommandLine command_line(base::FilePath("/usr/bin/security"));
++  command_line.AppendArg("find-generic-password");
++  command_line.AppendArg("-s");
++  command_line.AppendArg(service_name);
++  command_line.AppendArg("-a");
++  command_line.AppendArg(account_name);
++  command_line.AppendArg("-w");
++
++  std::string output;
++  if (!base::GetAppOutput(command_line, &output)) {
++    return std::nullopt;
++  }
++  while (!output.empty() &&
++         (output.back() == '\n' || output.back() == '\r')) {
++    output.pop_back();
++  }
++  if (output.empty()) {
++    return std::nullopt;
+   }
++  return output;
++}
+ 
+-  return password;
++std::string GetLocalFallbackPassword(const std::string& service_name,
++                                     const std::string& account_name) {
++  return service_name + ":" + account_name +
++         ":ant-browser-local-safe-storage-v1";
+ }
+ 
+ base::expected<std::string, OSStatus> GetPasswordImpl(
+@@ -88,6 +98,14 @@ base::expected<std::string, OSStatus> GetPasswordImpl(
+                                   uma_result);
+   };
+ 
++  // The legacy Keychain API can block indefinitely on some macOS 26 setups.
++  // Prefer the system security tool, which returns the same safe-storage item
++  // without pinning Chromium startup before DevTools and renderer creation.
++  if (auto password = GetPasswordFromSecurityTool(service_name, account_name)) {
++    uma_result = FindGenericPasswordResult::kPasswordFound;
++    return *password;
++  }
++
+   auto password = keychain.FindGenericPassword(service_name, account_name);
+ 
+   if (password.has_value()) {
+@@ -97,7 +115,7 @@ base::expected<std::string, OSStatus> GetPasswordImpl(
+ 
+   if (password.error() == errSecItemNotFound) {
+     uma_result = FindGenericPasswordResult::kPasswordNotFound;
+-    return AddRandomPasswordToKeychain(keychain, service_name, account_name);
++    return GetLocalFallbackPassword(service_name, account_name);
+   }
+ 
+   OSSTATUS_LOG(ERROR, password.error()) << "Keychain lookup failed";

@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "kernelVersion": "146.0.7680.177-fk.3",
+  "kernelName": "Chromium Fingerprint 146.0.7680.177 Linux ARM64",
+  "platform": "linux-arm64",
+  "versions": {
+    "chromium": "146.0.7680.177",
+    "chromiumTag": "146.0.7680.177",
+    "ungoogledTag": "146.0.7680.177-1",
+    "kernelRevision": "fk.3"
+  },
+  "repos": {
+    "packagingRepo": "https://github.com/ungoogled-software/ungoogled-chromium-portablelinux.git",
+    "upstreamRepo": "https://github.com/ungoogled-software/ungoogled-chromium.git"
+  },
+  "patchQueues": {
+    "packaging": null,
+    "chromium": "patches/chromium",
+    "product": "patches/product"
+  },
+  "paths": {
+    "workspaceRoot": "work/146.0.7680.177-fk.3-linux-arm64",
+    "reposRoot": "work/146.0.7680.177-fk.3-linux-arm64/repos",
+    "packagingRepoDir": "work/146.0.7680.177-fk.3-linux-arm64/repos/ungoogled-chromium-portablelinux",
+    "chromiumSourceDir": "work/146.0.7680.177-fk.3-linux-arm64/repos/ungoogled-chromium-portablelinux/build/src",
+    "patchesRoot": "work/146.0.7680.177-fk.3-linux-arm64/patches",
+    "packagingPatchesDir": "work/146.0.7680.177-fk.3-linux-arm64/patches/packaging",
+    "chromiumPatchesDir": "work/146.0.7680.177-fk.3-linux-arm64/patches/chromium",
+    "productPatchesDir": "work/146.0.7680.177-fk.3-linux-arm64/patches/product",
+    "artifactDir": "work/146.0.7680.177-fk.3-linux-arm64/artifacts",
+    "logsDir": "work/146.0.7680.177-fk.3-linux-arm64/logs",
+    "signingDir": "work/146.0.7680.177-fk.3-linux-arm64/signing"
+  },
+  "build": {
+    "hostOs": "linux",
+    "hostArch": "x64",
+    "targetOs": "linux",
+    "targetArch": "arm64",
+    "bundleName": "chrome",
+    "artifactPatterns": [
+      "build/release/ungoogled-chromium-*-arm64.AppImage",
+      "build/release/ungoogled-chromium-*-arm64.AppImage.zsync",
+      "build/release/ungoogled-chromium-*-arm64_linux.tar.xz"
+    ],
+    "gnArgsSuggested": [
+      "is_official_build=true",
+      "is_component_build=false",
+      "target_cpu=\"arm64\"",
+      "v8_target_cpu=\"arm64\""
+    ]
+  },
+  "fingerprint": {
+    "entryFlags": [
+      "--fingerprint",
+      "--fingerprint-platform",
+      "--fingerprint-brand",
+      "--timezone",
+      "--accept-lang",
+      "--disable-spoofing",
+      "--fingerprint-webrtc-public-ip",
+      "--fingerprint-device-memory"
+    ],
+    "patchModules": [
+      "launch-flags",
+      "ua-client-hints",
+      "navigator-platform",
+      "timezone-language",
+      "webgl-canvas-audio",
+      "fonts-client-rects",
+      "device-memory",
+      "webrtc",
+      "automation-anti-detection"
+    ]
+  },
+  "install": {
+    "antBrowserStateRoot": "/Users/netlops/Library/Application Support/ant-browser",
+    "relativeCorePath": "chrome/chromium-146.0.7680.177-fk.3-linux-arm64",
+    "suggestedCoreName": "Chromium 146.0.7680.177 FK Linux ARM64"
+  }
+}

@@ -10,12 +10,16 @@ import sys
 
 
 ARCHIVE_SUFFIXES = (
+    ".AppImage",
+    ".AppImage.zsync",
     ".dmg",
     ".zip",
     ".pkg",
+    ".tar.xz",
     ".tar",
     ".tar.gz",
     ".tgz",
+    ".txz",
 )
 
 
@@ -74,6 +78,13 @@ def load_manifest(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def resolve_manifest_path(value: str, repo_root: Path) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = repo_root / path
+    return path.resolve()
+
+
 def resolve_assets_repo(args: argparse.Namespace, repo_root: Path) -> Path:
     if args.assets_repo:
         repo = Path(args.assets_repo).expanduser().resolve()
@@ -124,9 +135,9 @@ def is_archive(path: Path) -> bool:
     return any(name.endswith(suffix) for suffix in ARCHIVE_SUFFIXES)
 
 
-def discover_archive_files(manifest: dict, args: argparse.Namespace) -> list[Path]:
-    artifact_dir = Path(manifest["paths"]["artifactDir"]).expanduser().resolve()
-    packaging_repo_dir = Path(manifest["paths"]["packagingRepoDir"]).expanduser().resolve()
+def discover_archive_files(manifest: dict, args: argparse.Namespace, repo_root: Path) -> list[Path]:
+    artifact_dir = resolve_manifest_path(manifest["paths"]["artifactDir"], repo_root)
+    packaging_repo_dir = resolve_manifest_path(manifest["paths"]["packagingRepoDir"], repo_root)
     recursive_candidates = [artifact_dir]
     recursive_candidates.extend(Path(item).expanduser().resolve() for item in args.scan_dir)
     shallow_candidates = [packaging_repo_dir / "build"]
@@ -159,8 +170,8 @@ def discover_archive_files(manifest: dict, args: argparse.Namespace) -> list[Pat
     return results
 
 
-def summarize_build_logs(manifest: dict, run_meta: dict | None) -> str:
-    logs_dir = Path(manifest["paths"]["logsDir"]).expanduser().resolve()
+def summarize_build_logs(manifest: dict, run_meta: dict | None, repo_root: Path) -> str:
+    logs_dir = resolve_manifest_path(manifest["paths"]["logsDir"], repo_root)
     lines = [
         f"kernelVersion: {manifest['kernelVersion']}",
         f"generatedAtUtc: {datetime.now(timezone.utc).isoformat()}",
@@ -244,7 +255,7 @@ def main() -> int:
 
     shutil.copy2(manifest_path, release_dirs["release"] / "manifest.json")
 
-    archives = discover_archive_files(manifest, args)
+    archives = discover_archive_files(manifest, args, repo_root)
     checksum_lines = []
     archive_entries = []
     for archive in archives:
@@ -282,7 +293,7 @@ def main() -> int:
     )
 
     (release_dirs["logs"] / "summary.txt").write_text(
-        summarize_build_logs(manifest, run_meta),
+        summarize_build_logs(manifest, run_meta, repo_root),
         encoding="utf-8",
     )
     write_notarization_readme(release_dirs["notarization"])

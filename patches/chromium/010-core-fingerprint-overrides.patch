@@ -11,9 +11,9 @@ index 5515443..4dd698d 100644
  #include "net/http/http_util.h"
  #include "third_party/blink/public/common/features.h"
 @@ -58,6 +59,41 @@ namespace embedder_support {
- 
+
  namespace {
- 
+
 +std::string CanonicalFingerprintPlatform(std::string platform) {
 +  platform = base::ToLowerASCII(platform);
 +  if (platform == "macos") {
@@ -50,7 +50,7 @@ index 5515443..4dd698d 100644
 +}
 +
  #if BUILDFLAG(IS_WIN)
- 
+
  // The registry key where the UniversalApiContract version value can be read
 @@ -217,9 +253,6 @@ const blink::UserAgentBrandList GetUserAgentBrandFullVersionListInternal(
  // depending on the Reduce User-Agent reduction phase features.
@@ -59,13 +59,13 @@ index 5515443..4dd698d 100644
 -  if (base::CommandLine::ForCurrentProcess()->HasSwitch(kHeadless)) {
 -    product.insert(0, "Headless");
 -  }
- 
+
  #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
    if (base::CommandLine::ForCurrentProcess()->HasSwitch(kUseMobileUserAgent)) {
 @@ -227,9 +260,12 @@ std::string GetUserAgentInternal() {
    }
  #endif
- 
+
 -  return ShouldSendUserAgentUnifiedPlatform()
 -             ? BuildUnifiedPlatformUserAgentFromProduct(product)
 -             : BuildUserAgentFromProduct(product);
@@ -76,11 +76,11 @@ index 5515443..4dd698d 100644
 +      std::string(version_info::GetVersionNumber()));
 +  return user_agent;
  }
- 
+
  // Generate random order list based on the input size and seed.
 @@ -281,6 +317,18 @@ blink::UserAgentBrandList ShuffleBrandList(
  }
- 
+
  std::string GetUserAgentPlatform() {
 +  const base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
 +  const std::string fingerprint_platform = CanonicalFingerprintPlatform(
@@ -99,7 +99,7 @@ index 5515443..4dd698d 100644
  #elif BUILDFLAG(IS_MAC)
 @@ -301,6 +349,18 @@ std::string GetUserAgentPlatform() {
  }
- 
+
  std::string GetUnifiedPlatform() {
 +  const base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
 +  const std::string fingerprint_platform = CanonicalFingerprintPlatform(
@@ -123,7 +123,7 @@ index c2f9515..90ea10e 100644
 @@ -15,4 +15,21 @@ const char kFingerprintingCanvasMeasureTextNoise[] = "fingerprinting-canvas-meas
  // Enable fingerprinting deception for Canvas image data
  const char kFingerprintingCanvasImageDataNoise[] = "fingerprinting-canvas-image-data-noise";
- 
+
 +// Stable fingerprint seed used by spoofing logic.
 +const char kFingerprint[] = "fingerprint";
 +
@@ -149,7 +149,7 @@ index 7dace11..7c22435 100644
 @@ -15,6 +15,16 @@ COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintingClientRectsNoise[];
  COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintingCanvasMeasureTextNoise[];
  COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintingCanvasImageDataNoise[];
- 
+
 +COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprint[];
 +COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintBrand[];
 +COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintBrandVersion[];
@@ -161,7 +161,7 @@ index 7dace11..7c22435 100644
 +COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintTimezone[];
 +
  }
- 
+
  #endif  // THIRD_PARTY_UNGOOGLED_FINGERPRINTING_SWITCHES_H_
 diff --git a/content/browser/renderer_host/render_process_host_impl.cc b/content/browser/renderer_host/render_process_host_impl.cc
 index d304b0a..64d765a 100644
@@ -183,14 +183,70 @@ index d304b0a..64d765a 100644
        switches::kForceDeviceScaleFactor,
        switches::kForceDisplayColorProfile,
        switches::kForceHighContrast,
+diff --git a/third_party/blink/common/device_memory/approximated_device_memory.cc b/third_party/blink/common/device_memory/approximated_device_memory.cc
+--- a/third_party/blink/common/device_memory/approximated_device_memory.cc
++++ b/third_party/blink/common/device_memory/approximated_device_memory.cc
+@@ -3,16 +3,48 @@
+
+ #include "third_party/blink/public/common/device_memory/approximated_device_memory.h"
+
++#include "base/command_line.h"
+ #include "base/check_op.h"
+ #include "base/feature_list.h"
++#include "base/strings/string_number_conversions.h"
+ #include "base/system/sys_info.h"
+ #include "third_party/blink/public/common/features.h"
+
+ namespace blink {
+
++namespace {
++
++constexpr char kFingerprintDeviceMemorySwitch[] = "fingerprint-device-memory";
++
++bool GetFingerprintDeviceMemoryOverride(float* device_memory_gb) {
++  const base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
++  const std::string override_value =
++      command_line->GetSwitchValueASCII(kFingerprintDeviceMemorySwitch);
++  double parsed_value = 0.0;
++  if (!override_value.empty() &&
++      base::StringToDouble(override_value, &parsed_value) &&
++      parsed_value > 0.0) {
++    if (parsed_value > 8.0)
++      parsed_value = 8.0;
++    *device_memory_gb = static_cast<float>(parsed_value);
++    return true;
++  }
++  return false;
++}
++
++}  // namespace
++
+ // static
+ float ApproximatedDeviceMemory::approximated_device_memory_gb_ = 0.0;
+ int64_t ApproximatedDeviceMemory::physical_memory_mb_ = 0;
+@@ -21,6 +53,16 @@ void ApproximatedDeviceMemory::Initialize() {
+   if (approximated_device_memory_gb_ > 0.0)
+     return;
+
++  float overridden_device_memory_gb = 0.0f;
++  if (GetFingerprintDeviceMemoryOverride(&overridden_device_memory_gb)) {
++    approximated_device_memory_gb_ = overridden_device_memory_gb;
++    physical_memory_mb_ =
++        static_cast<int64_t>(overridden_device_memory_gb * 1024.0f);
++    return;
++  }
++
+   DCHECK_EQ(0, physical_memory_mb_);
+   physical_memory_mb_ = ::base::SysInfo::AmountOfPhysicalMemory().InMiB();
+   CalculateAndSetApproximatedDeviceMemory();
 diff --git a/third_party/blink/renderer/core/execution_context/navigator_base.cc b/third_party/blink/renderer/core/execution_context/navigator_base.cc
 index 523372b..76a8fe9 100644
 --- a/third_party/blink/renderer/core/execution_context/navigator_base.cc
 +++ b/third_party/blink/renderer/core/execution_context/navigator_base.cc
 @@ -4,7 +4,11 @@
- 
+
  #include "third_party/blink/renderer/core/execution_context/navigator_base.h"
- 
+
 +#include "base/command_line.h"
  #include "base/feature_list.h"
 +#include "base/strings/string_number_conversions.h"
@@ -200,9 +256,9 @@ index 523372b..76a8fe9 100644
  #include "third_party/blink/public/common/features.h"
  #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 @@ -23,7 +27,27 @@ namespace blink {
- 
+
  namespace {
- 
+
 +std::string CanonicalFingerprintPlatform(std::string platform) {
 +  platform = base::ToLowerASCII(platform);
 +  if (platform == "macos") {
@@ -229,7 +285,7 @@ index 523372b..76a8fe9 100644
  #elif BUILDFLAG(IS_MAC)
 @@ -70,6 +94,15 @@ void NavigatorBase::Trace(Visitor* visitor) const {
  }
- 
+
  unsigned int NavigatorBase::hardwareConcurrency() const {
 +  const base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
 +  const std::string override_value = command_line->GetSwitchValueASCII(
@@ -250,17 +306,17 @@ index e8db256..75ce026 100644
 @@ -21,6 +21,9 @@
   *  MA 02110-1301, USA
   */
- 
+
 +#include "base/command_line.h"
 +#include "base/strings/string_util.h"
 +#include "components/ungoogled/ungoogled_switches.h"
  #include "third_party/blink/renderer/core/frame/navigator.h"
- 
+
  #include "third_party/blink/renderer/bindings/core/v8/script_controller.h"
 @@ -38,6 +41,18 @@
- 
+
  namespace blink {
- 
+
 +namespace {
 +
 +std::string CanonicalFingerprintPlatform(std::string platform) {
@@ -274,11 +330,11 @@ index e8db256..75ce026 100644
 +}  // namespace
 +
  Navigator::Navigator(ExecutionContext* context) : NavigatorBase(context) {}
- 
+
  String Navigator::productSub() const {
 @@ -57,6 +72,19 @@ String Navigator::vendorSub() const {
  }
- 
+
  String Navigator::platform() const {
 +  const base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
 +  const std::string fingerprint_platform = CanonicalFingerprintPlatform(
@@ -298,7 +354,7 @@ index e8db256..75ce026 100644
    // mobile and desktop when ReduceUserAgent is enabled.
 @@ -99,9 +127,6 @@ bool Navigator::cookieEnabled() const {
  }
- 
+
  bool Navigator::webdriver() const {
 -  if (RuntimeEnabledFeatures::AutomationControlledEnabled())
 -    return true;
@@ -311,9 +367,9 @@ index 05fa33e..5754da9 100644
 --- a/third_party/blink/renderer/core/frame/navigator_device_memory.cc
 +++ b/third_party/blink/renderer/core/frame/navigator_device_memory.cc
 @@ -4,6 +4,9 @@
- 
+
  #include "third_party/blink/renderer/core/frame/navigator_device_memory.h"
- 
+
 +#include "base/command_line.h"
 +#include "base/strings/string_number_conversions.h"
 +#include "components/ungoogled/ungoogled_switches.h"
@@ -322,7 +378,7 @@ index 05fa33e..5754da9 100644
  #include "third_party/blink/renderer/core/dom/document.h"
 @@ -12,6 +15,15 @@
  namespace blink {
- 
+
  float NavigatorDeviceMemory::deviceMemory() const {
 +  const base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
 +  const std::string override_value = command_line->GetSwitchValueASCII(
@@ -335,15 +391,15 @@ index 05fa33e..5754da9 100644
 +  }
    return ApproximatedDeviceMemory::GetApproximatedDeviceMemory();
  }
- 
+
 diff --git a/third_party/blink/renderer/core/frame/screen.cc b/third_party/blink/renderer/core/frame/screen.cc
 index 69ffc2b..2f7710f 100644
 --- a/third_party/blink/renderer/core/frame/screen.cc
 +++ b/third_party/blink/renderer/core/frame/screen.cc
 @@ -28,7 +28,10 @@
- 
+
  #include "third_party/blink/renderer/core/frame/screen.h"
- 
+
 +#include "base/command_line.h"
  #include "base/numerics/safe_conversions.h"
 +#include "base/strings/string_number_conversions.h"
@@ -372,9 +428,9 @@ index 48eb8d2..796ada0 100644
 --- a/third_party/blink/renderer/core/timezone/timezone_controller.cc
 +++ b/third_party/blink/renderer/core/timezone/timezone_controller.cc
 @@ -4,7 +4,9 @@
- 
+
  #include "third_party/blink/renderer/core/timezone/timezone_controller.h"
- 
+
 +#include "base/command_line.h"
  #include "base/feature_list.h"
 +#include "components/ungoogled/ungoogled_switches.h"
@@ -383,7 +439,7 @@ index 48eb8d2..796ada0 100644
  #include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
 @@ -60,6 +62,12 @@ String GetTimezoneId(const icu::TimeZone& timezone) {
  }
- 
+
  String GetCurrentTimezoneId() {
 +  const base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
 +  const std::string timezone_override =
@@ -405,11 +461,11 @@ index 48eb8d2..796ada0 100644
 +    SetIcuTimeZoneAndNotifyV8(String::FromUTF8(timezone_override));
 +  }
  }
- 
+
  TimeZoneController::~TimeZoneController() = default;
 @@ -216,9 +230,14 @@ void TimeZoneController::ChangeTimeZoneOverride(const String& timezone_id) {
  }
- 
+
  bool TimeZoneController::SetIcuTimeZoneAndNotifyV8(const String& timezone_id) {
 -  DCHECK(!timezone_id.empty());
 +  const base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
@@ -422,5 +478,5 @@ index 48eb8d2..796ada0 100644
 -      icu::UnicodeString(timezone_id.Ascii().data(), -1, US_INV)));
 +      icu::UnicodeString(actual_timezone_id.Ascii().data(), -1, US_INV)));
    CHECK(timezone);
- 
+
    if (*timezone == icu::TimeZone::getUnknown()) {

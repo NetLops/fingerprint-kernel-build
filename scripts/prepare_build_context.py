@@ -42,6 +42,13 @@ def load_manifest(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def resolve_manifest_path(value: str, repo_root: Path) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = repo_root / path
+    return path.resolve()
+
+
 def copy_dir_contents(src: Path, dst: Path) -> None:
     if not src.is_dir():
         raise RuntimeError(f"missing source directory: {src}")
@@ -58,6 +65,48 @@ def copy_dir_contents(src: Path, dst: Path) -> None:
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(item, target)
+
+
+def resolve_patch_queue_source(
+    repo_root: Path,
+    manifest: dict,
+    queue_name: str,
+    default_relative_path: str,
+) -> Path | None:
+    patch_queues = manifest.get("patchQueues", {})
+    configured = patch_queues.get(queue_name, default_relative_path)
+    if configured is None or configured is False:
+        return None
+    if isinstance(configured, str) and not configured.strip():
+        return None
+    source = Path(str(configured)).expanduser()
+    if not source.is_absolute():
+        source = repo_root / source
+    return source.resolve()
+
+
+def prepare_patch_queue(
+    repo_root: Path,
+    manifest: dict,
+    queue_name: str,
+    default_relative_path: str,
+    destination: Path,
+) -> bool:
+    source = resolve_patch_queue_source(
+        repo_root,
+        manifest,
+        queue_name,
+        default_relative_path,
+    )
+    if source is None:
+        if destination.exists():
+            shutil.rmtree(destination)
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / "SERIES.txt").write_text("", encoding="utf-8")
+        return False
+
+    copy_dir_contents(source, destination)
+    return bool(load_series(destination / "SERIES.txt"))
 
 
 def load_series(series_path: Path) -> list[Path]:
@@ -187,27 +236,46 @@ def main() -> int:
     repo_root = Path(args.repo_root).expanduser().resolve()
     manifest = load_manifest(manifest_path)
 
-    workspace_root = Path(manifest["paths"]["workspaceRoot"]).expanduser().resolve()
-    packaging_repo_dir = Path(manifest["paths"]["packagingRepoDir"]).expanduser().resolve()
-    chromium_source_dir = Path(manifest["paths"]["chromiumSourceDir"]).expanduser().resolve()
-    artifact_dir = Path(manifest["paths"]["artifactDir"]).expanduser().resolve()
-    logs_dir = Path(manifest["paths"]["logsDir"]).expanduser().resolve()
-    packaging_patches_dir = Path(manifest["paths"]["packagingPatchesDir"]).expanduser().resolve()
-    chromium_patches_dir = Path(manifest["paths"]["chromiumPatchesDir"]).expanduser().resolve()
-    product_patches_dir = Path(manifest["paths"]["productPatchesDir"]).expanduser().resolve()
+    workspace_root = resolve_manifest_path(manifest["paths"]["workspaceRoot"], repo_root)
+    packaging_repo_dir = resolve_manifest_path(manifest["paths"]["packagingRepoDir"], repo_root)
+    chromium_source_dir = resolve_manifest_path(manifest["paths"]["chromiumSourceDir"], repo_root)
+    artifact_dir = resolve_manifest_path(manifest["paths"]["artifactDir"], repo_root)
+    logs_dir = resolve_manifest_path(manifest["paths"]["logsDir"], repo_root)
+    packaging_patches_dir = resolve_manifest_path(manifest["paths"]["packagingPatchesDir"], repo_root)
+    chromium_patches_dir = resolve_manifest_path(manifest["paths"]["chromiumPatchesDir"], repo_root)
+    product_patches_dir = resolve_manifest_path(manifest["paths"]["productPatchesDir"], repo_root)
     checkout_ref = args.packaging_ref or manifest["versions"]["ungoogledTag"]
 
     workspace_root.mkdir(parents=True, exist_ok=True)
     artifact_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    copy_dir_contents(repo_root / "patches" / "packaging", packaging_patches_dir)
-    copy_dir_contents(repo_root / "patches" / "chromium", chromium_patches_dir)
-    copy_dir_contents(repo_root / "patches" / "product", product_patches_dir)
+    packaging_queue_has_entries = prepare_patch_queue(
+        repo_root,
+        manifest,
+        "packaging",
+        "patches/packaging",
+        packaging_patches_dir,
+    )
+    prepare_patch_queue(
+        repo_root,
+        manifest,
+        "chromium",
+        "patches/chromium",
+        chromium_patches_dir,
+    )
+    prepare_patch_queue(
+        repo_root,
+        manifest,
+        "product",
+        "patches/product",
+        product_patches_dir,
+    )
     shutil.copy2(manifest_path, workspace_root / "kernel-manifest.json")
 
     prepare_packaging_repo(manifest["repos"]["packagingRepo"], packaging_repo_dir, checkout_ref)
-    apply_packaging_patches(repo_root, packaging_repo_dir, packaging_patches_dir / "SERIES.txt")
+    if packaging_queue_has_entries:
+        apply_packaging_patches(repo_root, packaging_repo_dir, packaging_patches_dir / "SERIES.txt")
     injected_paths = inject_overlay_patches(packaging_repo_dir, chromium_patches_dir, product_patches_dir)
 
     summary = {
@@ -218,6 +286,7 @@ def main() -> int:
         "artifactDir": str(artifact_dir),
         "logsDir": str(logs_dir),
         "checkoutRef": checkout_ref,
+        "packagingPatchQueueApplied": packaging_queue_has_entries,
         "injectedSeriesEntries": injected_paths,
     }
     summary_path = logs_dir / "prepare-build-context.json"
@@ -232,13 +301,19 @@ def main() -> int:
         "FK_LOGS_DIR": str(logs_dir),
         "FK_PACKAGING_REF": checkout_ref,
         "FK_BUNDLE_NAME": str(manifest["build"]["bundleName"]),
+        "FK_PLATFORM": str(manifest.get("platform", "")),
+        "FK_TARGET_OS": str(manifest["build"].get("targetOs", "")),
+        "FK_TARGET_ARCH": str(manifest["build"].get("targetArch", "")),
     }
     export_env(env_items)
 
     print(f"[OK] workspace synced: {workspace_root}")
     print(f"[OK] packaging repo ready: {packaging_repo_dir}")
     print(f"[OK] checkout ref: {checkout_ref}")
-    print(f"[OK] packaging patches applied from: {packaging_patches_dir / 'SERIES.txt'}")
+    if packaging_queue_has_entries:
+        print(f"[OK] packaging patches applied from: {packaging_patches_dir / 'SERIES.txt'}")
+    else:
+        print(f"[OK] packaging patch queue disabled for this manifest")
     print(f"[OK] overlay patch entries injected: {len(injected_paths)}")
     print(f"[OK] summary written: {summary_path}")
     for key, value in env_items.items():

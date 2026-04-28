@@ -1,6 +1,8 @@
 # fingerprint-kernel-build
 
-这是 NetLops 自建 mac arm64 指纹内核的私有构建仓。
+这是 NetLops 自建指纹 Chromium 内核的私有构建仓。当前常用主线是
+`146.0.7680.177`，mac arm64 默认入口保留不动，Linux ARM64 走独立
+`current-linux-arm64.json` manifest。
 
 设计目标：
 
@@ -78,6 +80,7 @@ python3 tools/fingerprint-kernel/bootstrap-build-repo.py \
 正式构建 workflow：
 
 - `.github/workflows/build-mac-arm64.yml`
+- `.github/workflows/build-linux-arm64.yml`
 
 默认是 `dry_run=true`，只做这些动作：
 
@@ -132,6 +135,23 @@ python3 scripts/run_build.py \
   --assets-repo /Users/netlops/Documents/ai/github/fingerprint-kernel-assets \
   --archive-commit
 ```
+
+Linux ARM64 构建入口基于 `ungoogled-chromium-portablelinux` 的
+`146.0.7680.177-1` tag，目标版本和本机默认 146 内核保持同一条线：
+
+```bash
+gh workflow run build-linux-arm64.yml \
+  -R NetLops/fingerprint-kernel-build \
+  --ref <branch> \
+  -f manifest_path=manifests/current-linux-arm64.json \
+  -f dry_run=false \
+  -f arch=arm64 \
+  -f runs_on_json='["ubuntu-latest"]'
+```
+
+如有大规格自建 Linux 构建机，建议把 `runs_on_json` 换成对应 runner label，
+例如 `["self-hosted","Linux","X64"]`，能减少 GitHub hosted runner 的磁盘和
+超时风险。
 
 ## 这个 skeleton 已经带了什么
 

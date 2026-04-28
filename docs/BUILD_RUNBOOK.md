@@ -36,6 +36,7 @@
   - `python3 scripts/prepare_build_context.py --manifest manifests/current.json`
 - GitHub Actions 手动触发：
   - `.github/workflows/build-mac-arm64.yml`
+  - `.github/workflows/build-linux-arm64.yml`
 - 懒人一键入口：
   - `python3 scripts/run_build.py --manifest manifests/current.json --install --set-default --replace-existing`
   - 如果成功后本地工作区没有现成 `Chromium.app`，脚本会自动下载当前 GitHub run 的 artifact，并尝试从 `.zip` / `.dmg` 里提取可安装的 `Chromium.app`
@@ -46,6 +47,38 @@
   - `python3 scripts/post_build_verify.py --run-id <gh-run-id> --core-path chrome/chromium-<version>`
 - 归档 release metadata：
   - `python3 scripts/archive_to_assets_repo.py --manifest manifests/current.json --run-id <gh-run-id> --assets-repo /Users/netlops/Documents/ai/github/fingerprint-kernel-assets --commit`
+
+## Linux ARM64
+
+当前 Linux ARM64 内核固定跟随本机常用 146 线：
+
+- Chromium: `146.0.7680.177`
+- Ungoogled portablelinux tag: `146.0.7680.177-1`
+- Kernel revision: `fk.3`
+- Manifest: `manifests/current-linux-arm64.json`
+
+触发构建：
+
+```bash
+gh workflow run build-linux-arm64.yml \
+  -R NetLops/fingerprint-kernel-build \
+  --ref <branch> \
+  -f manifest_path=manifests/current-linux-arm64.json \
+  -f dry_run=false \
+  -f arch=arm64 \
+  -f runs_on_json='["ubuntu-latest"]'
+```
+
+Linux workflow 会先 checkout `ungoogled-chromium-portablelinux`，跳过 mac 专用
+packaging patch queue，再把 `patches/chromium` 和 `patches/product` 注入
+portablelinux 的 `patches/series`。产物是：
+
+- `ungoogled-chromium-*-arm64.AppImage`
+- `ungoogled-chromium-*-arm64.AppImage.zsync`
+- `ungoogled-chromium-*-arm64_linux.tar.xz`
+
+如果 hosted runner 出现磁盘不足或超时，换大规格自建 Linux runner，再把
+`runs_on_json` 改成对应 labels，例如 `["self-hosted","Linux","X64"]`。
 
 ## 最低验收
 

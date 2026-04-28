@@ -1,0 +1,160 @@
+name: build-linux-arm64
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: Path to the Linux ARM64 kernel manifest JSON
+        required: true
+        default: manifests/current-linux-arm64.json
+      packaging_ref:
+        description: Optional override for the portablelinux packaging repo git ref
+        required: false
+        default: ""
+      dry_run:
+        description: If true, stop after preparing the Linux build context
+        required: true
+        type: choice
+        default: "true"
+        options:
+          - "true"
+          - "false"
+      arch:
+        description: Target Linux architecture passed to portablelinux
+        required: true
+        default: arm64
+      runs_on_json:
+        description: JSON array/string for runs-on. Use self-hosted large Linux runner when available.
+        required: true
+        default: '["ubuntu-latest"]'
+
+concurrency:
+  group: build-linux-arm64-${{ github.ref }}-${{ inputs.manifest_path }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ${{ fromJSON(inputs.runs_on_json) }}
+    timeout-minutes: 360
+    env:
+      FK_TARGET_ARCH_INPUT: ${{ inputs.arch }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python Venv
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv
+          ./.venv/bin/python -m pip install --upgrade pip
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          echo "FK_PYTHON=$PWD/.venv/bin/python" >> "$GITHUB_ENV"
+          ./.venv/bin/python --version
+
+      - name: Set Up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compile Scripts
+        run: |
+          "$FK_PYTHON" -m py_compile scripts/*.py
+
+      - name: Show Upgrade Plan
+        run: |
+          "$FK_PYTHON" scripts/render_upgrade_plan.py --manifest "${{ inputs.manifest_path }}"
+
+      - name: Check Runner Prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          for bin in git python3 docker file tar xz; do
+            command -v "$bin" >/dev/null
+            echo "[OK] found $bin -> $(command -v "$bin")"
+          done
+
+      - name: Prepare Build Context
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--manifest "${{ inputs.manifest_path }}" --repo-root "$PWD")
+          if [ -n "${{ inputs.packaging_ref }}" ]; then
+            args+=(--packaging-ref "${{ inputs.packaging_ref }}")
+          fi
+          "$FK_PYTHON" scripts/prepare_build_context.py "${args[@]}"
+
+      - name: Show Prepared Repo Status
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C "$FK_PACKAGING_REPO_DIR" status --short || true
+          tail -n 80 "$FK_LOGS_DIR/prepare-build-context.json"
+
+      - name: Prepare Linux ARM64 Build Tree
+        if: ${{ inputs.dry_run != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$FK_PACKAGING_REPO_DIR"
+          export ARCH="${FK_TARGET_ARCH_INPUT}"
+          export _prepare_only=true
+          echo "[OK] ARCH=$ARCH"
+          echo "[OK] prepare-only Linux build tree"
+          bash ./scripts/docker-build.sh 2>&1 | tee "$FK_LOGS_DIR/prepare-linux.log"
+
+      - name: Build Linux ARM64 Chromium
+        if: ${{ inputs.dry_run != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$FK_PACKAGING_REPO_DIR"
+          export ARCH="${FK_TARGET_ARCH_INPUT}"
+          export _prepare_only=false
+          export _use_existing_image=true
+          export _gha_final=true
+          echo "[OK] ARCH=$ARCH"
+          bash ./scripts/docker-build.sh 2>&1 | tee "$FK_LOGS_DIR/build.log"
+
+      - name: Package Linux ARM64 Artifacts
+        if: ${{ inputs.dry_run != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$FK_PACKAGING_REPO_DIR"
+          bash ./package/docker-package.sh 2>&1 | tee "$FK_LOGS_DIR/package.log"
+          mkdir -p "$FK_ARTIFACT_DIR"
+          cp -v build/release/ungoogled-chromium-*-"${FK_TARGET_ARCH_INPUT}".AppImage* "$FK_ARTIFACT_DIR"/
+          cp -v build/release/ungoogled-chromium-*-"${FK_TARGET_ARCH_INPUT}"_linux.tar.xz "$FK_ARTIFACT_DIR"/
+
+      - name: Smoke Check Linux ARM64 Artifacts
+        if: ${{ inputs.dry_run != 'true' }}
+        run: |
+          "$FK_PYTHON" scripts/run_linux_smoke_checks.py \
+            --out-dir "$FK_PACKAGING_REPO_DIR/build/src/out/Default" \
+            --release-dir "$FK_PACKAGING_REPO_DIR/build/release" \
+            --target-arch "$FK_TARGET_ARCH_INPUT"
+
+      - name: Collect Build Outputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/last-run logs/last-run
+          if [ -n "${FK_LOGS_DIR:-}" ] && [ -d "$FK_LOGS_DIR" ]; then
+            rsync -a "$FK_LOGS_DIR"/ logs/last-run/ || true
+          fi
+          if [ -n "${FK_ARTIFACT_DIR:-}" ] && [ -d "$FK_ARTIFACT_DIR" ]; then
+            rsync -a "$FK_ARTIFACT_DIR"/ artifacts/last-run/ || true
+          fi
+          if [ -n "${FK_PACKAGING_REPO_DIR:-}" ] && [ -d "$FK_PACKAGING_REPO_DIR/build/release" ]; then
+            find "$FK_PACKAGING_REPO_DIR/build/release" -maxdepth 1 -type f -exec cp {} artifacts/last-run/ \; || true
+          fi
+
+      - name: Upload Run Outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-linux-arm64-${{ github.run_id }}
+          path: |
+            artifacts/last-run/
+            logs/last-run/
+            ${{ inputs.manifest_path }}

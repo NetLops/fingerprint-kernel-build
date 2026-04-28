@@ -1,0 +1,169 @@
+diff --git a/components/ungoogled/ungoogled_switches.cc b/components/ungoogled/ungoogled_switches.cc
+--- a/components/ungoogled/ungoogled_switches.cc
++++ b/components/ungoogled/ungoogled_switches.cc
+@@ -31,6 +31,9 @@ const char kFingerprintColorDepth[] = "fingerprint-color-depth";
+ const char kFingerprintGpuVendor[] = "fingerprint-gpu-vendor";
+ const char kFingerprintGpuRenderer[] = "fingerprint-gpu-renderer";
+ 
++// WebRTC candidate public IP override.
++const char kFingerprintWebRtcPublicIp[] = "fingerprint-webrtc-public-ip";
++
+ // Timezone override.
+ const char kFingerprintTimezone[] = "timezone";
+ 
+diff --git a/components/ungoogled/ungoogled_switches.h b/components/ungoogled/ungoogled_switches.h
+--- a/components/ungoogled/ungoogled_switches.h
++++ b/components/ungoogled/ungoogled_switches.h
+@@ -26,6 +26,7 @@ COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintColorDepth[];
+ COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintTimezone[];
+ COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintGpuVendor[];
+ COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintGpuRenderer[];
++COMPONENT_EXPORT(UNGOOGLED) extern const char kFingerprintWebRtcPublicIp[];
+ 
+ }
+ 
+diff --git a/content/browser/renderer_host/render_process_host_impl.cc b/content/browser/renderer_host/render_process_host_impl.cc
+--- a/content/browser/renderer_host/render_process_host_impl.cc
++++ b/content/browser/renderer_host/render_process_host_impl.cc
+@@ -3722,6 +3722,7 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
+       switches::kFingerprintColorDepth,
+       switches::kFingerprintGpuVendor,
+       switches::kFingerprintGpuRenderer,
++      switches::kFingerprintWebRtcPublicIp,
+       switches::kFingerprintTimezone,
+       switches::kForceDeviceScaleFactor,
+       switches::kForceDisplayColorProfile,
+diff --git a/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection_handler.cc b/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection_handler.cc
+--- a/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection_handler.cc
++++ b/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection_handler.cc
+@@ -10,10 +10,12 @@
+ #include <functional>
+ #include <memory>
+ #include <set>
++#include <sstream>
+ #include <string>
+ #include <utility>
+ #include <vector>
+ 
++#include "base/command_line.h"
+ #include "base/compiler_specific.h"
+ #include "base/location.h"
+ #include "base/logging.h"
+@@ -95,10 +97,104 @@ namespace {
+ // so treat as append-only.
+ enum class RtcpMux { kDisabled, kEnabled, kNoMedia, kMax };
+ 
++constexpr char kFingerprintWebRtcPublicIpSwitch[] =
++    "fingerprint-webrtc-public-ip";
++
++std::string GetFingerprintWebRtcPublicIpOverride() {
++  const base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
++  std::string public_ip =
++      command_line->GetSwitchValueASCII(kFingerprintWebRtcPublicIpSwitch);
++  if (public_ip.find_first_of(" \t\r\n") != std::string::npos) {
++    return std::string();
++  }
++  return public_ip;
++}
++
++bool IsCandidateLine(const std::string& line) {
++  return line.rfind("candidate:", 0) == 0 ||
++         line.rfind("a=candidate:", 0) == 0;
++}
++
++bool ShouldRewriteRelatedAddress(const std::string& address) {
++  return !address.empty() && address != "0.0.0.0" && address != "::";
++}
++
++std::string RewriteWebRtcCandidateLinePublicIp(const std::string& line,
++                                               const std::string& public_ip) {
++  if (public_ip.empty() || !IsCandidateLine(line)) {
++    return line;
++  }
++
++  const bool has_sdp_prefix = line.rfind("a=", 0) == 0;
++  const std::string prefix = has_sdp_prefix ? "a=" : "";
++  const std::string candidate = has_sdp_prefix ? line.substr(2) : line;
++
++  std::istringstream stream(candidate);
++  std::vector<std::string> tokens;
++  std::string token;
++  while (stream >> token) {
++    tokens.push_back(token);
++  }
++  if (tokens.size() < 6 || tokens[0].rfind("candidate:", 0) != 0) {
++    return line;
++  }
++
++  // candidate:<foundation> <component> <protocol> <priority> <address> <port>
++  tokens[4] = public_ip;
++  for (size_t i = 0; i + 1 < tokens.size(); ++i) {
++    if (tokens[i] == "raddr" && ShouldRewriteRelatedAddress(tokens[i + 1])) {
++      tokens[i + 1] = public_ip;
++    }
++  }
++
++  std::string rewritten = prefix;
++  for (size_t i = 0; i < tokens.size(); ++i) {
++    if (i > 0) {
++      rewritten.push_back(' ');
++    }
++    rewritten += tokens[i];
++  }
++  return rewritten;
++}
++
++std::string RewriteWebRtcCandidatePublicIps(const std::string& value) {
++  const std::string public_ip = GetFingerprintWebRtcPublicIpOverride();
++  if (public_ip.empty()) {
++    return value;
++  }
++
++  std::string rewritten;
++  size_t line_start = 0;
++  while (line_start < value.size()) {
++    size_t line_end = value.find('\n', line_start);
++    const bool has_newline = line_end != std::string::npos;
++    if (!has_newline) {
++      line_end = value.size();
++    }
++
++    std::string line = value.substr(line_start, line_end - line_start);
++    const bool has_carriage_return =
++        !line.empty() && line.back() == '\r';
++    if (has_carriage_return) {
++      line.pop_back();
++    }
++
++    rewritten += RewriteWebRtcCandidateLinePublicIp(line, public_ip);
++    if (has_carriage_return) {
++      rewritten.push_back('\r');
++    }
++    if (has_newline) {
++      rewritten.push_back('\n');
++    }
++    line_start = line_end + (has_newline ? 1 : 0);
++  }
++  return rewritten;
++}
++
+ RTCSessionDescriptionPlatform* CreateWebKitSessionDescription(
+     const std::string& sdp,
+     const std::string& type) {
+   return MakeGarbageCollected<RTCSessionDescriptionPlatform>(
+-      String::FromUTF8(type), String::FromUTF8(sdp));
++      String::FromUTF8(type),
++      String::FromUTF8(RewriteWebRtcCandidatePublicIps(sdp)));
+ }
+ 
+ RTCSessionDescriptionPlatform* CreateWebKitSessionDescription(
+@@ -2049,7 +2145,8 @@ void RTCPeerConnectionHandler::OnIceCandidate(const String& sdp,
+   TRACE_EVENT0("webrtc", "RTCPeerConnectionHandler::OnIceCandidateImpl");
+   // This line can cause garbage collection.
+   auto* platform_candidate = MakeGarbageCollected<RTCIceCandidatePlatform>(
+-      sdp, sdp_mid, sdp_mline_index, usernameFragment, url);
++      String::FromUTF8(RewriteWebRtcCandidatePublicIps(sdp.Utf8())), sdp_mid,
++      sdp_mline_index, usernameFragment, url);
+   if (peer_connection_tracker_) {
+     peer_connection_tracker_->TrackAddIceCandidate(
+         this, platform_candidate, PeerConnectionTracker::kSourceLocal, true);
