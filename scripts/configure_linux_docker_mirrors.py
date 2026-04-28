@@ -61,7 +61,7 @@ def patch_bindgen_cargo_mirror(packaging_repo: Path) -> None:
     text = patch_path.read_text(encoding="utf-8")
     text = text.replace(
         '+registry = "sparse+https://index.crates.io/"',
-        f'+replace-with = "rsproxy-sparse"\n+\n+[source.rsproxy-sparse]\n+registry = "{CARGO_MIRROR}"',
+        f'+registry = "{CARGO_MIRROR}"',
     )
     text = text.replace('+git-fetch-with-cli = true', '+git-fetch-with-cli = false')
     patch_path.write_text(text, encoding="utf-8")

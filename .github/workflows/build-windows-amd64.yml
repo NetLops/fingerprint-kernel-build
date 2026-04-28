@@ -46,11 +46,17 @@ jobs:
           New-Item -ItemType Directory -Force -Path C:\tmp | Out-Null
           "TMP=C:\tmp" >> $env:GITHUB_ENV
           "TEMP=C:\tmp" >> $env:GITHUB_ENV
-          if (Get-PSDrive X -ErrorAction SilentlyContinue) {
-            subst X: /D
+          $shortRoot = "D:\fk"
+          if (Test-Path $shortRoot) {
+            Remove-Item $shortRoot -Recurse -Force
           }
-          subst X: "$env:GITHUB_WORKSPACE"
-          "FK_BUILD_REPO_ROOT=X:\" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force -Path $shortRoot | Out-Null
+          robocopy "$env:GITHUB_WORKSPACE" "$shortRoot" /MIR /XD .git work artifacts logs /NFL /NDL /NJH /NJS /NP
+          if ($LASTEXITCODE -gt 7) {
+            exit $LASTEXITCODE
+          }
+          $global:LASTEXITCODE = 0
+          "FK_BUILD_REPO_ROOT=$shortRoot" >> $env:GITHUB_ENV
           try {
             Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name LongPathsEnabled -Value 1 -Type DWord
           } catch {
@@ -121,16 +127,18 @@ jobs:
         if: always()
         run: |
           Set-Location "$env:FK_BUILD_REPO_ROOT"
-          New-Item -ItemType Directory -Force -Path artifacts\last-run | Out-Null
-          New-Item -ItemType Directory -Force -Path logs\last-run | Out-Null
+          $artifactDir = Join-Path $env:GITHUB_WORKSPACE "artifacts\last-run"
+          $logDir = Join-Path $env:GITHUB_WORKSPACE "logs\last-run"
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $logDir | Out-Null
           if ($env:FK_LOGS_DIR -and (Test-Path $env:FK_LOGS_DIR)) {
-            Copy-Item "$env:FK_LOGS_DIR\*" logs\last-run\ -Recurse -Force -ErrorAction SilentlyContinue
+            Copy-Item "$env:FK_LOGS_DIR\*" $logDir -Recurse -Force -ErrorAction SilentlyContinue
           }
           if ($env:FK_PACKAGING_REPO_DIR) {
             $buildDir = Join-Path $env:FK_PACKAGING_REPO_DIR "build"
             if (Test-Path $buildDir) {
               Get-ChildItem $buildDir -File -Filter "ungoogled-chromium*" |
-                Copy-Item -Destination artifacts\last-run -Force -ErrorAction SilentlyContinue
+                Copy-Item -Destination $artifactDir -Force -ErrorAction SilentlyContinue
             }
           }
 
