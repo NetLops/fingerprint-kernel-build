@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "kernelVersion": "146.0.7680.177-fk.3",
+  "kernelName": "Chromium Fingerprint 146.0.7680.177 Windows AMD64",
+  "platform": "windows-amd64",
+  "versions": {
+    "chromium": "146.0.7680.177",
+    "chromiumTag": "146.0.7680.177",
+    "ungoogledTag": "146.0.7680.177-1.1",
+    "kernelRevision": "fk.3"
+  },
+  "repos": {
+    "packagingRepo": "https://github.com/ungoogled-software/ungoogled-chromium-windows.git",
+    "upstreamRepo": "https://github.com/ungoogled-software/ungoogled-chromium.git"
+  },
+  "patchQueues": {
+    "packaging": null,
+    "chromium": "patches/chromium",
+    "product": "patches/product"
+  },
+  "paths": {
+    "workspaceRoot": "work/146.0.7680.177-fk.3-windows-amd64",
+    "reposRoot": "work/146.0.7680.177-fk.3-windows-amd64/repos",
+    "packagingRepoDir": "work/146.0.7680.177-fk.3-windows-amd64/repos/ungoogled-chromium-windows",
+    "chromiumSourceDir": "work/146.0.7680.177-fk.3-windows-amd64/repos/ungoogled-chromium-windows/build/src",
+    "patchesRoot": "work/146.0.7680.177-fk.3-windows-amd64/patches",
+    "packagingPatchesDir": "work/146.0.7680.177-fk.3-windows-amd64/patches/packaging",
+    "chromiumPatchesDir": "work/146.0.7680.177-fk.3-windows-amd64/patches/chromium",
+    "productPatchesDir": "work/146.0.7680.177-fk.3-windows-amd64/patches/product",
+    "artifactDir": "work/146.0.7680.177-fk.3-windows-amd64/artifacts",
+    "logsDir": "work/146.0.7680.177-fk.3-windows-amd64/logs",
+    "signingDir": "work/146.0.7680.177-fk.3-windows-amd64/signing"
+  },
+  "build": {
+    "hostOs": "windows",
+    "hostArch": "x64",
+    "targetOs": "windows",
+    "targetArch": "x64",
+    "bundleName": "chrome.exe",
+    "artifactPatterns": [
+      "build/ungoogled-chromium_*_windows_x64.zip",
+      "build/ungoogled-chromium_*_installer_x64.exe"
+    ],
+    "gnArgsSuggested": [
+      "is_official_build=true",
+      "is_component_build=false",
+      "target_cpu=\"x64\""
+    ]
+  },
+  "fingerprint": {
+    "entryFlags": [
+      "--fingerprint",
+      "--fingerprint-platform",
+      "--fingerprint-brand",
+      "--timezone",
+      "--accept-lang",
+      "--disable-spoofing",
+      "--fingerprint-webrtc-public-ip",
+      "--fingerprint-device-memory"
+    ],
+    "patchModules": [
+      "launch-flags",
+      "ua-client-hints",
+      "navigator-platform",
+      "timezone-language",
+      "webgl-canvas-audio",
+      "fonts-client-rects",
+      "device-memory",
+      "webrtc",
+      "automation-anti-detection"
+    ]
+  },
+  "install": {
+    "antBrowserStateRoot": "/Users/netlops/Library/Application Support/ant-browser",
+    "relativeCorePath": "chrome/chromium-146.0.7680.177-fk.3-windows-amd64",
+    "suggestedCoreName": "Chromium 146.0.7680.177 FK Windows AMD64"
+  }
+}

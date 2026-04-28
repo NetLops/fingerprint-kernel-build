@@ -136,8 +136,10 @@ python3 scripts/run_build.py \
   --archive-commit
 ```
 
-Linux ARM64 构建入口基于 `ungoogled-chromium-portablelinux` 的
-`146.0.7680.177-1` tag，目标版本和本机默认 146 内核保持同一条线：
+Linux 构建入口基于 `ungoogled-chromium-portablelinux` 的
+`146.0.7680.177-1` tag，Windows 构建入口基于
+`ungoogled-chromium-windows` 的 `146.0.7680.177-1.1` tag，目标版本和本机
+默认 146 内核保持同一条线：
 
 ```bash
 gh workflow run build-linux-arm64.yml \
@@ -147,6 +149,29 @@ gh workflow run build-linux-arm64.yml \
   -f dry_run=false \
   -f arch=arm64 \
   -f runs_on_json='["ubuntu-latest"]'
+```
+
+Linux AMD64 用同一个 workflow，换 manifest 和 arch：
+
+```bash
+gh workflow run build-linux-arm64.yml \
+  -R NetLops/fingerprint-kernel-build \
+  --ref <branch> \
+  -f manifest_path=manifests/current-linux-amd64.json \
+  -f dry_run=false \
+  -f arch=x64 \
+  -f runs_on_json='["ubuntu-latest"]'
+```
+
+Windows AMD64：
+
+```bash
+gh workflow run build-windows-amd64.yml \
+  -R NetLops/fingerprint-kernel-build \
+  --ref <branch> \
+  -f manifest_path=manifests/current-windows-amd64.json \
+  -f dry_run=false \
+  -f ninja_jobs=2
 ```
 
 如有大规格自建 Linux 构建机，建议把 `runs_on_json` 换成对应 runner label，
@@ -166,12 +191,17 @@ gh workflow run build-linux-arm64.yml \
 - `docs/ASSETS_REPO.md`
 - `.github/workflows/repo-smoke.yml`
 - `.github/workflows/build-mac-arm64.yml`
+- `.github/workflows/build-linux-arm64.yml`
+- `.github/workflows/build-windows-amd64.yml`
 - `.github/workflows/build-mac-arm64.yml.example`
 
 其中：
 
 - `repo-smoke.yml` 可以直接作为仓库基础体检工作流
 - `build-mac-arm64.yml` 会在自建 `macOS ARM64` runner 上执行真实构建
+- `build-linux-arm64.yml` 会在 Linux runner 上执行 portablelinux 构建，支持
+  `arch=arm64` 和 `arch=x64`
+- `build-windows-amd64.yml` 会在 `windows-2022` runner 上执行 Windows x64 构建
 - `build-mac-arm64.yml.example` 保留作额外实验模板
 
 ## 和 Ant Browser 仓库的关系

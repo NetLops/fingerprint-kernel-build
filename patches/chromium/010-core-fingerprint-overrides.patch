@@ -224,10 +224,7 @@ diff --git a/third_party/blink/common/device_memory/approximated_device_memory.c
  // static
  float ApproximatedDeviceMemory::approximated_device_memory_gb_ = 0.0;
  int64_t ApproximatedDeviceMemory::physical_memory_mb_ = 0;
-@@ -20,6 +44,14 @@ void ApproximatedDeviceMemory::Initialize() {
-   if (approximated_device_memory_gb_ > 0.0)
-     return;
-
+@@ -21,0 +46,8 @@ void ApproximatedDeviceMemory::Initialize() {
 +  float overridden_device_memory_gb = 0.0f;
 +  if (GetFingerprintDeviceMemoryOverride(&overridden_device_memory_gb)) {
 +    approximated_device_memory_gb_ = overridden_device_memory_gb;
@@ -236,9 +233,6 @@ diff --git a/third_party/blink/common/device_memory/approximated_device_memory.c
 +    return;
 +  }
 +
-   DCHECK_EQ(0, physical_memory_mb_);
-   physical_memory_mb_ = ::base::SysInfo::AmountOfPhysicalMemory().InMiB();
-   CalculateAndSetApproximatedDeviceMemory();
 diff --git a/third_party/blink/renderer/core/execution_context/navigator_base.cc b/third_party/blink/renderer/core/execution_context/navigator_base.cc
 index 523372b..76a8fe9 100644
 --- a/third_party/blink/renderer/core/execution_context/navigator_base.cc

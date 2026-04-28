@@ -48,16 +48,19 @@
 - 归档 release metadata：
   - `python3 scripts/archive_to_assets_repo.py --manifest manifests/current.json --run-id <gh-run-id> --assets-repo /Users/netlops/Documents/ai/github/fingerprint-kernel-assets --commit`
 
-## Linux ARM64
+## Linux And Windows 146
 
-当前 Linux ARM64 内核固定跟随本机常用 146 线：
+当前跨平台内核固定跟随本机常用 146 线：
 
 - Chromium: `146.0.7680.177`
 - Ungoogled portablelinux tag: `146.0.7680.177-1`
+- Ungoogled windows tag: `146.0.7680.177-1.1`
 - Kernel revision: `fk.3`
-- Manifest: `manifests/current-linux-arm64.json`
+- Linux ARM64 manifest: `manifests/current-linux-arm64.json`
+- Linux AMD64 manifest: `manifests/current-linux-amd64.json`
+- Windows AMD64 manifest: `manifests/current-windows-amd64.json`
 
-触发构建：
+触发 Linux ARM64 构建：
 
 ```bash
 gh workflow run build-linux-arm64.yml \
@@ -69,13 +72,42 @@ gh workflow run build-linux-arm64.yml \
   -f runs_on_json='["ubuntu-latest"]'
 ```
 
+触发 Linux AMD64 构建：
+
+```bash
+gh workflow run build-linux-arm64.yml \
+  -R NetLops/fingerprint-kernel-build \
+  --ref <branch> \
+  -f manifest_path=manifests/current-linux-amd64.json \
+  -f dry_run=false \
+  -f arch=x64 \
+  -f runs_on_json='["ubuntu-latest"]'
+```
+
+触发 Windows AMD64 构建：
+
+```bash
+gh workflow run build-windows-amd64.yml \
+  -R NetLops/fingerprint-kernel-build \
+  --ref <branch> \
+  -f manifest_path=manifests/current-windows-amd64.json \
+  -f dry_run=false \
+  -f ninja_jobs=2
+```
+
 Linux workflow 会先 checkout `ungoogled-chromium-portablelinux`，跳过 mac 专用
 packaging patch queue，再把 `patches/chromium` 和 `patches/product` 注入
-portablelinux 的 `patches/series`。产物是：
+portablelinux 的 `patches/series`。Windows workflow 会 checkout
+`ungoogled-chromium-windows`，同样注入 fingerprint patch queue。产物是：
 
 - `ungoogled-chromium-*-arm64.AppImage`
 - `ungoogled-chromium-*-arm64.AppImage.zsync`
 - `ungoogled-chromium-*-arm64_linux.tar.xz`
+- `ungoogled-chromium-*-x64.AppImage`
+- `ungoogled-chromium-*-x64.AppImage.zsync`
+- `ungoogled-chromium-*-x64_linux.tar.xz`
+- `ungoogled-chromium_*_windows_x64.zip`
+- `ungoogled-chromium_*_installer_x64.exe`
 
 如果 hosted runner 出现磁盘不足或超时，换大规格自建 Linux runner，再把
 `runs_on_json` 改成对应 labels，例如 `["self-hosted","Linux","X64"]`。

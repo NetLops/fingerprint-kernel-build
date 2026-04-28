@@ -20,6 +20,7 @@ ARCHIVE_SUFFIXES = (
     ".tar.gz",
     ".tgz",
     ".txz",
+    ".exe",
 )
 
 

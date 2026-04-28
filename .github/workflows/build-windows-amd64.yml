@@ -1,0 +1,126 @@
+name: build-windows-amd64
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: Path to the Windows AMD64 kernel manifest JSON
+        required: true
+        default: manifests/current-windows-amd64.json
+      packaging_ref:
+        description: Optional override for the Windows packaging repo git ref
+        required: false
+        default: ""
+      dry_run:
+        description: If true, stop after preparing the Windows build context
+        required: true
+        type: choice
+        default: "true"
+        options:
+          - "true"
+          - "false"
+      ninja_jobs:
+        description: Ninja job count passed to build.py
+        required: false
+        default: "2"
+
+concurrency:
+  group: build-windows-amd64-${{ github.ref }}-${{ inputs.manifest_path }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable Long Paths
+        run: |
+          git config --system core.longpaths true
+          New-Item -ItemType Directory -Force -Path C:\tmp | Out-Null
+          "TMP=C:\tmp" >> $env:GITHUB_ENV
+          "TEMP=C:\tmp" >> $env:GITHUB_ENV
+          try {
+            Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name LongPathsEnabled -Value 1 -Type DWord
+          } catch {
+            Write-Host "[WARN] LongPathsEnabled registry update failed: $_"
+          }
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Scripts
+        run: python -m py_compile scripts/*.py
+
+      - name: Show Upgrade Plan
+        run: python scripts/render_upgrade_plan.py --manifest "${{ inputs.manifest_path }}"
+
+      - name: Check Runner Prerequisites
+        run: |
+          foreach ($bin in @("git", "python", "7z")) {
+            $cmd = Get-Command $bin -ErrorAction Stop
+            Write-Host "[OK] found $bin -> $($cmd.Source)"
+          }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (!(Test-Path $vswhere)) {
+            throw "vswhere.exe not found at $vswhere"
+          }
+          Write-Host "[OK] found vswhere -> $vswhere"
+
+      - name: Prepare Build Context
+        run: |
+          $args = @("--manifest", "${{ inputs.manifest_path }}", "--repo-root", "$PWD")
+          if ("${{ inputs.packaging_ref }}" -ne "") {
+            $args += @("--packaging-ref", "${{ inputs.packaging_ref }}")
+          }
+          python scripts/prepare_build_context.py @args
+
+      - name: Show Prepared Repo Status
+        run: |
+          git -C "$env:FK_PACKAGING_REPO_DIR" status --short
+          Get-Content "$env:FK_LOGS_DIR\prepare-build-context.json" -Tail 120
+
+      - name: Build And Package Windows AMD64
+        if: ${{ inputs.dry_run != 'true' }}
+        run: |
+          Set-Location "$env:FK_PACKAGING_REPO_DIR"
+          python -m pip install httplib2==0.22.0
+          python build.py --ci -j "${{ inputs.ninja_jobs }}" 2>&1 | Tee-Object -FilePath "$env:FK_LOGS_DIR\build.log"
+
+      - name: Smoke Check Windows AMD64 Artifacts
+        if: ${{ inputs.dry_run != 'true' }}
+        run: |
+          python scripts/run_windows_smoke_checks.py `
+            --build-dir "$env:FK_PACKAGING_REPO_DIR\build" `
+            --target-arch x64
+
+      - name: Collect Build Outputs
+        if: always()
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts\last-run | Out-Null
+          New-Item -ItemType Directory -Force -Path logs\last-run | Out-Null
+          if ($env:FK_LOGS_DIR -and (Test-Path $env:FK_LOGS_DIR)) {
+            Copy-Item "$env:FK_LOGS_DIR\*" logs\last-run\ -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          $buildDir = Join-Path $env:FK_PACKAGING_REPO_DIR "build"
+          if (Test-Path $buildDir) {
+            Get-ChildItem $buildDir -File -Filter "ungoogled-chromium*" |
+              Copy-Item -Destination artifacts\last-run -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload Run Outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-windows-amd64-${{ github.run_id }}
+          path: |
+            artifacts/last-run/
+            logs/last-run/
+            ${{ inputs.manifest_path }}
