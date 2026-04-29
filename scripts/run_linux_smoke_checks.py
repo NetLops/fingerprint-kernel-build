@@ -50,6 +50,15 @@ def assert_arch(file_output: str, target_arch: str) -> None:
         )
 
 
+def release_arch_token(target_arch: str) -> str:
+    normalized = target_arch.lower()
+    if normalized in ("x64", "x86_64", "amd64"):
+        return "x86_64"
+    if normalized in ("arm64", "aarch64"):
+        return "arm64"
+    return target_arch
+
+
 def main() -> int:
     args = parse_args()
     out_dir = Path(args.out_dir).expanduser().resolve()
@@ -66,12 +75,13 @@ def main() -> int:
     assert_arch(chrome_file, args.target_arch)
     assert_arch(chromedriver_file, args.target_arch)
 
-    appimages = sorted(release_dir.glob(f"*{args.target_arch}*.AppImage"))
-    tarballs = sorted(release_dir.glob(f"*{args.target_arch}*_linux.tar.xz"))
+    release_token = release_arch_token(args.target_arch)
+    appimages = sorted(release_dir.glob(f"*{release_token}*.AppImage"))
+    tarballs = sorted(release_dir.glob(f"*{release_token}*_linux.tar.xz"))
     if not appimages:
-        raise RuntimeError(f"missing {args.target_arch} AppImage under: {release_dir}")
+        raise RuntimeError(f"missing {release_token} AppImage under: {release_dir}")
     if not tarballs:
-        raise RuntimeError(f"missing {args.target_arch} tar.xz under: {release_dir}")
+        raise RuntimeError(f"missing {release_token} tar.xz under: {release_dir}")
 
     print(f"[OK] chrome: {chrome}")
     print(f"[OK] chrome file: {chrome_file}")

@@ -173,6 +173,20 @@ sync_outputs() {
 
 trap sync_outputs EXIT
 
+release_arch_name() {
+    case "$TARGET_ARCH" in
+        x64|amd64|x86_64)
+            echo "x86_64"
+            ;;
+        arm64|aarch64)
+            echo "arm64"
+            ;;
+        *)
+            echo "$TARGET_ARCH"
+            ;;
+    esac
+}
+
 GITHUB_ENV_FILE="$PUBLIC_LOG_DIR/github-env"
 GITHUB_OUTPUT="$PUBLIC_LOG_DIR/github-output"
 
@@ -256,8 +270,9 @@ package_and_smoke() {
 
     bash ./package/docker-package.sh 2>&1 | tee "$FK_LOGS_DIR/package.log"
     mkdir -p "$FK_ARTIFACT_DIR"
-    cp -v build/release/ungoogled-chromium-*-"${TARGET_ARCH}".AppImage* "$FK_ARTIFACT_DIR"/
-    cp -v build/release/ungoogled-chromium-*-"${TARGET_ARCH}"_linux.tar.xz "$FK_ARTIFACT_DIR"/
+    release_arch="$(release_arch_name)"
+    cp -v build/release/ungoogled-chromium-*-"${release_arch}".AppImage* "$FK_ARTIFACT_DIR"/
+    cp -v build/release/ungoogled-chromium-*-"${release_arch}"_linux.tar.xz "$FK_ARTIFACT_DIR"/
 
     cd "$REPO_ROOT"
     python3 scripts/run_linux_smoke_checks.py \
