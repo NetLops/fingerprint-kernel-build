@@ -106,7 +106,7 @@ def prepare_patch_queue(
         return False
 
     copy_dir_contents(source, destination)
-    return bool(load_series(destination / "SERIES.txt"))
+    return bool(apply_queue_excludes(manifest, queue_name, destination / "SERIES.txt"))
 
 
 def load_series(series_path: Path) -> list[Path]:
@@ -119,6 +119,34 @@ def load_series(series_path: Path) -> list[Path]:
             continue
         items.append(Path(line))
     return items
+
+
+def write_series(series_path: Path, entries: list[Path]) -> None:
+    text = "\n".join(entry.as_posix() for entry in entries)
+    if text:
+        text += "\n"
+    series_path.write_text(text, encoding="utf-8")
+
+
+def apply_queue_excludes(manifest: dict, queue_name: str, series_path: Path) -> list[Path]:
+    excludes = manifest.get("patchQueueExcludes", {}).get(queue_name, [])
+    if not excludes:
+        return load_series(series_path)
+    if not isinstance(excludes, list):
+        raise RuntimeError(f"patchQueueExcludes.{queue_name} must be a list")
+
+    excluded = {Path(str(item)).as_posix() for item in excludes}
+    entries = load_series(series_path)
+    matched = {entry.as_posix() for entry in entries if entry.as_posix() in excluded}
+    missing = sorted(excluded - matched)
+    if missing:
+        raise RuntimeError(
+            f"patchQueueExcludes.{queue_name} entries not found in {series_path}: {', '.join(missing)}"
+        )
+
+    filtered = [entry for entry in entries if entry.as_posix() not in excluded]
+    write_series(series_path, filtered)
+    return filtered
 
 
 def prepare_packaging_repo(repo_url: str, repo_dir: Path, checkout_ref: str) -> None:
