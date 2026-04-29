@@ -18,6 +18,7 @@ Phases:
   build-slice   Run one resumable ninja slice.
   build-final   Run the final ninja slice and fail if still incomplete.
   package       Package and smoke check completed outputs.
+  collect       Collect already-built outputs from the workspace/cache and upload them.
 USAGE
 }
 
@@ -216,6 +217,66 @@ source_prepared_env() {
     set +a
 }
 
+source_manifest_env() {
+    eval "$(python3 - "$MANIFEST" "$REPO_ROOT" <<'PY'
+import json
+import shlex
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1]).expanduser()
+repo_root = Path(sys.argv[2]).expanduser().resolve()
+if not manifest_path.is_absolute():
+    manifest_path = repo_root / manifest_path
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+def resolve(value: str) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = repo_root / path
+    return path.resolve()
+
+items = {
+    "FK_MANIFEST_PATH": manifest_path.resolve(),
+    "FK_WORKSPACE_ROOT": resolve(manifest["paths"]["workspaceRoot"]),
+    "FK_PACKAGING_REPO_DIR": resolve(manifest["paths"]["packagingRepoDir"]),
+    "FK_ARTIFACT_DIR": resolve(manifest["paths"]["artifactDir"]),
+    "FK_LOGS_DIR": resolve(manifest["paths"]["logsDir"]),
+}
+for key, value in items.items():
+    print(f"export {key}={shlex.quote(str(value))}")
+PY
+)"
+}
+
+install_collect_tools() {
+    local missing=()
+    local bin
+    for bin in python3 file find cp ls; do
+        if ! command -v "$bin" >/dev/null 2>&1; then
+            missing+=("$bin")
+        fi
+    done
+    if [ "${#missing[@]}" -eq 0 ]; then
+        return 0
+    fi
+    echo "[WARN] missing collect tools: ${missing[*]}"
+    if ! command -v apt-get >/dev/null 2>&1; then
+        echo "[ERROR] apt-get is not available; cannot install missing collect tools" >&2
+        return 1
+    fi
+    local apt_prefix=()
+    if [ "$(id -u)" -ne 0 ]; then
+        if ! command -v sudo >/dev/null 2>&1; then
+            echo "[ERROR] need root or sudo to install missing collect tools" >&2
+            return 1
+        fi
+        apt_prefix=(sudo)
+    fi
+    "${apt_prefix[@]}" apt-get update
+    "${apt_prefix[@]}" apt-get install -y python3 file findutils coreutils
+}
+
 prepare_tree() {
     install_missing_tools
     python3 -m py_compile scripts/*.py
@@ -296,6 +357,41 @@ package_and_smoke() {
         2>&1 | tee "$FK_LOGS_DIR/smoke-check.log"
 }
 
+collect_existing_outputs() {
+    install_collect_tools
+    source_manifest_env
+    mkdir -p "$PUBLIC_ARTIFACT_DIR" "$PUBLIC_LOG_DIR" "$FK_ARTIFACT_DIR" "$FK_LOGS_DIR"
+
+    echo "[OK] collecting existing outputs for: $OUTPUT_NAME" | tee "$PUBLIC_LOG_DIR/collect.log"
+    echo "[OK] packaging repo: ${FK_PACKAGING_REPO_DIR:-missing}" | tee -a "$PUBLIC_LOG_DIR/collect.log"
+    echo "[OK] artifact dir: ${FK_ARTIFACT_DIR:-missing}" | tee -a "$PUBLIC_LOG_DIR/collect.log"
+
+    sync_outputs
+
+    release_arch="$(release_arch_name)"
+    echo "[OK] release arch token: $release_arch" | tee -a "$PUBLIC_LOG_DIR/collect.log"
+    echo "[OK] public artifact directory listing:" | tee -a "$PUBLIC_LOG_DIR/collect.log"
+    find "$PUBLIC_ARTIFACT_DIR" -maxdepth 2 -type f -print | sort | tee -a "$PUBLIC_LOG_DIR/collect.log"
+
+    appimage_count=$(find "$PUBLIC_ARTIFACT_DIR" -maxdepth 1 -type f -name "ungoogled-chromium-*-${release_arch}.AppImage" | wc -l | tr -d ' ')
+    tarball_count=$(find "$PUBLIC_ARTIFACT_DIR" -maxdepth 1 -type f -name "ungoogled-chromium-*-${release_arch}_linux.tar.xz" | wc -l | tr -d ' ')
+    if [ "$appimage_count" -lt 1 ] || [ "$tarball_count" -lt 1 ]; then
+        echo "[ERROR] no cached release artifacts found for $OUTPUT_NAME (AppImage=$appimage_count tarball=$tarball_count)" | tee -a "$PUBLIC_LOG_DIR/collect.log" >&2
+        echo "[ERROR] this upload-only phase is only a cheap cache probe; trigger the full CNB build if it fails" | tee -a "$PUBLIC_LOG_DIR/collect.log" >&2
+        return 1
+    fi
+
+    if [ -d "$FK_PACKAGING_REPO_DIR/build/src/out/Default" ] && [ -d "$FK_PACKAGING_REPO_DIR/build/release" ]; then
+        python3 scripts/run_linux_smoke_checks.py \
+            --out-dir "$FK_PACKAGING_REPO_DIR/build/src/out/Default" \
+            --release-dir "$FK_PACKAGING_REPO_DIR/build/release" \
+            --target-arch "$TARGET_ARCH" \
+            2>&1 | tee "$PUBLIC_LOG_DIR/smoke-check.log"
+    else
+        echo "[WARN] build output tree not present; upload-only phase verified artifact filenames only" | tee -a "$PUBLIC_LOG_DIR/collect.log"
+    fi
+}
+
 case "$PHASE" in
     all)
         prepare_tree
@@ -317,6 +413,9 @@ case "$PHASE" in
         ;;
     package)
         package_and_smoke
+        ;;
+    collect)
+        collect_existing_outputs
         ;;
     *)
         echo "[ERROR] unknown phase: $PHASE" >&2
