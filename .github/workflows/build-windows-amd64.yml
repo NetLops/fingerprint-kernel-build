@@ -20,17 +20,17 @@ on:
           - "true"
           - "false"
       ninja_jobs:
-        description: Ninja job count passed to build.py
+        description: Ninja job count passed to build.py; GitHub-hosted Windows has a 6h hard cap, so default to 4 for release builds.
         required: false
-        default: "2"
+        default: "4"
       runs_on_json:
         description: JSON array/string for runs-on. Use a larger Windows runner when available.
         required: false
         default: '["windows-2022"]'
       build_timeout_hours:
-        description: build.py ninja timeout override in hours
+        description: build.py ninja timeout override in hours; keep below hosted-runner 6h hard cap so logs/artifacts upload cleanly.
         required: false
-        default: "10.5"
+        default: "5.75"
 
 concurrency:
   group: build-windows-amd64-${{ github.ref }}-${{ inputs.manifest_path }}
