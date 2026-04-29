@@ -48,7 +48,7 @@
         - name: upload linux arm64 outputs
           image: cnbcool/attachments:latest
           settings:
-            attachments: "./artifacts/cnb/linux-arm64/*,./logs/cnb/linux-arm64/*,./logs/cnb/linux-arm64/**/*"
+            attachments: "./artifacts/cnb/linux-arm64/*,./logs/cnb/linux-arm64/**/*"
 
     linux-amd64: &linux-amd64
       runner:
@@ -98,7 +98,7 @@
         - name: upload linux amd64 outputs
           image: cnbcool/attachments:latest
           settings:
-            attachments: "./artifacts/cnb/linux-amd64/*,./logs/cnb/linux-amd64/*,./logs/cnb/linux-amd64/**/*"
+            attachments: "./artifacts/cnb/linux-amd64/*,./logs/cnb/linux-amd64/**/*"
 
   api_trigger_linux_arm64:
     linux-arm64: *linux-arm64
@@ -124,7 +124,7 @@
         - name: upload cached linux arm64 outputs
           image: cnbcool/attachments:latest
           settings:
-            attachments: "./artifacts/cnb/linux-arm64/*,./logs/cnb/linux-arm64/*,./logs/cnb/linux-arm64/**/*"
+            attachments: "./artifacts/cnb/linux-arm64/*,./logs/cnb/linux-arm64/**/*"
 
   api_trigger_upload_linux_amd64:
     linux-amd64-upload-only:
@@ -144,4 +144,4 @@
         - name: upload cached linux amd64 outputs
           image: cnbcool/attachments:latest
           settings:
-            attachments: "./artifacts/cnb/linux-amd64/*,./logs/cnb/linux-amd64/*,./logs/cnb/linux-amd64/**/*"
+            attachments: "./artifacts/cnb/linux-amd64/*,./logs/cnb/linux-amd64/**/*"
