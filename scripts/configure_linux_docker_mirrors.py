@@ -88,6 +88,8 @@ def patch_toolchain_git_mirrors(packaging_repo: Path) -> None:
         + LLVM_GIT_URL
         + '}"\n'
         + '    if [ -n "${llvm_git_url}" ]; then\n'
+        + '        git config --global url."${llvm_git_url}".insteadOf "https://chromium.googlesource.com/external/github.com/llvm/llvm-project"\n'
+        + '        git config --global url."${llvm_git_url}.git".insteadOf "https://chromium.googlesource.com/external/github.com/llvm/llvm-project.git"\n'
         + '        sed -i "s|https://chromium.googlesource.com/external/github.com/llvm/llvm-project|${llvm_git_url}|g" \\\n'
         + '            "${_src_dir}/tools/clang/scripts/build.py"\n'
         + "    fi\n"
