@@ -10,6 +10,7 @@
         FK_CNB_USE_MIRRORS: "true"
         FK_CNB_DOCKER_CPUS: "14"
         FK_CNB_NINJA_TASK_TIMEOUT_SECONDS: "41400"
+        FK_LLVM_GIT_URL: "https://github.com/llvm/llvm-project"
       stages:
         - name: prepare linux arm64 build tree
           timeout: 6h
@@ -61,6 +62,7 @@
         FK_CNB_USE_MIRRORS: "true"
         FK_CNB_DOCKER_CPUS: "30"
         FK_CNB_NINJA_TASK_TIMEOUT_SECONDS: "41400"
+        FK_LLVM_GIT_URL: "https://github.com/llvm/llvm-project"
       stages:
         - name: prepare linux amd64 build tree
           timeout: 6h

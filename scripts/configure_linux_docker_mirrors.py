@@ -8,6 +8,7 @@ DEBIAN_SECURITY_MIRROR = "http://mirrors.tuna.tsinghua.edu.cn/debian-security"
 DOCKER_DEBIAN_IMAGE = "docker.m.daocloud.io/library/debian:trixie-slim"
 NPM_MIRROR = "https://registry.npmmirror.com"
 CARGO_MIRROR = "sparse+https://rsproxy.cn/index/"
+LLVM_GIT_URL = "https://github.com/llvm/llvm-project"
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,6 +68,35 @@ def patch_bindgen_cargo_mirror(packaging_repo: Path) -> None:
     patch_path.write_text(text, encoding="utf-8")
 
 
+def patch_toolchain_git_mirrors(packaging_repo: Path) -> None:
+    shared_path = packaging_repo / "scripts" / "shared.sh"
+    if not shared_path.is_file():
+        return
+    text = shared_path.read_text(encoding="utf-8")
+    if "FK_LLVM_GIT_URL" in text:
+        return
+    needle = (
+        "    sed -i 's/chromium.9oo91esource.qjz9zk/chromium.googlesource.com/g' \\\n"
+        '        "${_src_dir}/tools/clang/scripts/build.py" \\\n'
+        '        "${_src_dir}/tools/rust/build_rust.py" \\\n'
+        '        "${_src_dir}/tools/rust/build_bindgen.py"\n'
+    )
+    replacement = (
+        needle
+        + "\n"
+        + '    local llvm_git_url="${FK_LLVM_GIT_URL:-'
+        + LLVM_GIT_URL
+        + '}"\n'
+        + '    if [ -n "${llvm_git_url}" ]; then\n'
+        + '        sed -i "s|https://chromium.googlesource.com/external/github.com/llvm/llvm-project|${llvm_git_url}|g" \\\n'
+        + '            "${_src_dir}/tools/clang/scripts/build.py"\n'
+        + "    fi\n"
+    )
+    if needle not in text:
+        raise RuntimeError(f"could not find toolchain mirror insertion point in {shared_path}")
+    shared_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+
+
 def main() -> int:
     args = parse_args()
     packaging_repo = Path(args.packaging_repo).expanduser().resolve()
@@ -76,6 +106,7 @@ def main() -> int:
     patch_dockerfile(packaging_repo / "docker" / "build.Dockerfile", include_npm=True)
     patch_dockerfile(packaging_repo / "docker" / "package.Dockerfile", include_npm=False)
     patch_bindgen_cargo_mirror(packaging_repo)
+    patch_toolchain_git_mirrors(packaging_repo)
     print(f"[OK] configured Linux Docker mirrors for: {packaging_repo}")
     return 0
 

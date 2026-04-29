@@ -135,9 +135,11 @@ elif new not in text:
     raise SystemExit(f"could not find {old!r} in {build_script}")
 build_script.write_text(text, encoding="utf-8")
 
+docker_build = packaging_repo / "scripts" / "docker-build.sh"
+text = docker_build.read_text(encoding="utf-8")
+changed = False
+
 if docker_cpus:
-    docker_build = packaging_repo / "scripts" / "docker-build.sh"
-    text = docker_build.read_text(encoding="utf-8")
     if "_docker_run_limits=()" not in text:
         text = text.replace(
             '_gha_mount=""\n',
@@ -154,7 +156,19 @@ if docker_cpus:
             '    "${_docker_run_limits[@]}" \\\n',
             1,
         )
-        docker_build.write_text(text, encoding="utf-8")
+        changed = True
+
+if 'FK_LLVM_GIT_URL:-' not in text:
+    text = text.replace(
+        '[ -n "${ARCH:-}" ] && _extra_env+=(-e ARCH)\n',
+        '[ -n "${ARCH:-}" ] && _extra_env+=(-e ARCH)\n'
+        '[ -n "${FK_LLVM_GIT_URL:-}" ] && _extra_env+=(-e FK_LLVM_GIT_URL)\n',
+        1,
+    )
+    changed = True
+
+if changed:
+    docker_build.write_text(text, encoding="utf-8")
 PY
 }
 
