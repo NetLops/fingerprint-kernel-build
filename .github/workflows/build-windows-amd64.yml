@@ -30,7 +30,7 @@ on:
       build_timeout_hours:
         description: build.py ninja timeout override in hours
         required: false
-        default: "5.75"
+        default: "10.5"
 
 concurrency:
   group: build-windows-amd64-${{ github.ref }}-${{ inputs.manifest_path }}
@@ -39,7 +39,7 @@ concurrency:
 jobs:
   build:
     runs-on: ${{ fromJSON(inputs.runs_on_json) }}
-    timeout-minutes: 360
+    timeout-minutes: 720
     defaults:
       run:
         shell: pwsh
@@ -135,7 +135,42 @@ jobs:
             throw "Could not find build.py timeout marker: $old"
           }
           python -m pip install httplib2==0.22.0
-          python build.py --ci -j "${{ inputs.ninja_jobs }}" 2>&1 | Tee-Object -FilePath "$env:FK_LOGS_DIR\build.log"
+          $env:PYTHONUNBUFFERED = "1"
+          $logFile = Join-Path "$env:FK_LOGS_DIR" "build.log"
+          $errFile = Join-Path "$env:FK_LOGS_DIR" "build.err.log"
+          $buildArgs = @("build.py", "--ci", "-j", "${{ inputs.ninja_jobs }}")
+          Write-Host "[OK] launching build: python $($buildArgs -join ' ')"
+          $proc = Start-Process -FilePath "python" `
+            -ArgumentList $buildArgs `
+            -NoNewWindow `
+            -PassThru `
+            -RedirectStandardOutput $logFile `
+            -RedirectStandardError $errFile
+
+          while (-not $proc.HasExited) {
+            Start-Sleep -Seconds 300
+            $proc.Refresh()
+            $elapsed = [DateTime]::UtcNow - $proc.StartTime.ToUniversalTime()
+            Write-Host "[heartbeat] Windows build still running pid=$($proc.Id) elapsed=$([int]$elapsed.TotalMinutes)m utc=$([DateTime]::UtcNow.ToString('o'))"
+            foreach ($file in @($logFile, $errFile)) {
+              if (Test-Path $file) {
+                $info = Get-Item $file
+                Write-Host "[heartbeat] tail $($info.Name) size=$($info.Length)"
+                Get-Content $file -Tail 40 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+              }
+            }
+          }
+
+          foreach ($file in @($logFile, $errFile)) {
+            if (Test-Path $file) {
+              $info = Get-Item $file
+              Write-Host "[final-log] tail $($info.Name) size=$($info.Length)"
+              Get-Content $file -Tail 120 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+            }
+          }
+          if ($proc.ExitCode -ne 0) {
+            throw "Windows build failed with exit code $($proc.ExitCode)"
+          }
 
       - name: Smoke Check Windows AMD64 Artifacts
         if: ${{ inputs.dry_run != 'true' }}
