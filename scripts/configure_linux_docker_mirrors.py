@@ -97,6 +97,25 @@ def patch_toolchain_git_mirrors(packaging_repo: Path) -> None:
     shared_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
 
 
+def patch_build_git_identity(packaging_repo: Path) -> None:
+    shared_path = packaging_repo / "scripts" / "shared.sh"
+    if not shared_path.is_file():
+        return
+    text = shared_path.read_text(encoding="utf-8")
+    if "FK_GIT_USER_EMAIL" in text:
+        return
+    needle = "setup_toolchain() {\n"
+    replacement = (
+        needle
+        + '    git config --global user.email "${FK_GIT_USER_EMAIL:-builder@netlops.invalid}"\n'
+        + '    git config --global user.name "${FK_GIT_USER_NAME:-NetLops Builder}"\n'
+        + "\n"
+    )
+    if needle not in text:
+        raise RuntimeError(f"could not find setup_toolchain in {shared_path}")
+    shared_path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+
+
 def main() -> int:
     args = parse_args()
     packaging_repo = Path(args.packaging_repo).expanduser().resolve()
@@ -107,6 +126,7 @@ def main() -> int:
     patch_dockerfile(packaging_repo / "docker" / "package.Dockerfile", include_npm=False)
     patch_bindgen_cargo_mirror(packaging_repo)
     patch_toolchain_git_mirrors(packaging_repo)
+    patch_build_git_identity(packaging_repo)
     print(f"[OK] configured Linux Docker mirrors for: {packaging_repo}")
     return 0
 
