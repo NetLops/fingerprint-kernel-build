@@ -13,7 +13,7 @@
         FK_LLVM_GIT_URL: "https://github.com/llvm/llvm-project"
       stages:
         - name: prepare linux arm64 build tree
-          timeout: 6h
+          timeout: 12h
           script: |
             bash scripts/run_cnb_linux_build.sh \
               --manifest manifests/current-linux-arm64.json \
