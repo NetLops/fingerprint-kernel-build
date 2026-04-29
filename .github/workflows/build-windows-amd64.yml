@@ -20,17 +20,17 @@ on:
           - "true"
           - "false"
       ninja_jobs:
-        description: Ninja job count passed to build.py; GitHub-hosted Windows has a 6h hard cap, so default to 4 for release builds.
+        description: Ninja job count passed to build.py; GitHub-hosted Windows has a 6h hard cap, so default to 8 for release attempts.
         required: false
-        default: "4"
+        default: "8"
       runs_on_json:
         description: JSON array/string for runs-on. Use a larger Windows runner when available.
         required: false
         default: '["windows-2022"]'
       build_timeout_hours:
-        description: build.py ninja timeout override in hours; keep below hosted-runner 6h hard cap so logs/artifacts upload cleanly.
+        description: External build watchdog in hours; keep below hosted-runner 6h hard cap so logs/artifacts upload cleanly.
         required: false
-        default: "5.75"
+        default: "5.5"
 
 concurrency:
   group: build-windows-amd64-${{ github.ref }}-${{ inputs.manifest_path }}
@@ -147,11 +147,13 @@ jobs:
             -RedirectStandardOutput $logFile `
             -RedirectStandardError $errFile
 
+          $watchdogMinutes = [double]$timeoutHours * 60.0
+          $timedOut = $false
           while (-not $proc.HasExited) {
             Start-Sleep -Seconds 300
             $proc.Refresh()
             $elapsed = [DateTime]::UtcNow - $proc.StartTime.ToUniversalTime()
-            Write-Host "[heartbeat] Windows build still running pid=$($proc.Id) elapsed=$([int]$elapsed.TotalMinutes)m utc=$([DateTime]::UtcNow.ToString('o'))"
+            Write-Host "[heartbeat] Windows build still running pid=$($proc.Id) elapsed=$([int]$elapsed.TotalMinutes)m watchdog=$([int]$watchdogMinutes)m utc=$([DateTime]::UtcNow.ToString('o'))"
             foreach ($file in @($logFile, $errFile)) {
               if (Test-Path $file) {
                 $info = Get-Item $file
@@ -159,14 +161,28 @@ jobs:
                 Get-Content $file -Tail 40 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
               }
             }
+            if ($elapsed.TotalMinutes -ge $watchdogMinutes) {
+              $timedOut = $true
+              Write-Host "[watchdog] Build exceeded $watchdogMinutes minutes; killing process tree before GitHub hosted 6h hard cap so logs can upload."
+              & taskkill.exe /PID $proc.Id /T /F 2>&1 | ForEach-Object { Write-Host $_ }
+              Start-Sleep -Seconds 5
+              $proc.Refresh()
+              if (-not $proc.HasExited) {
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+              }
+              break
+            }
           }
 
           foreach ($file in @($logFile, $errFile)) {
             if (Test-Path $file) {
               $info = Get-Item $file
               Write-Host "[final-log] tail $($info.Name) size=$($info.Length)"
-              Get-Content $file -Tail 120 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+              Get-Content $file -Tail 160 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
             }
+          }
+          if ($timedOut) {
+            throw "Windows build watchdog stopped the build after $watchdogMinutes minutes before the hosted-runner hard cap"
           }
           if ($proc.ExitCode -ne 0) {
             throw "Windows build failed with exit code $($proc.ExitCode)"
