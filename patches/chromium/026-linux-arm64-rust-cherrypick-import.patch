@@ -1,0 +1,11 @@
+--- a/tools/rust/build_rust.py
++++ b/tools/rust/build_rust.py
+@@ -55,7 +55,7 @@ sys.path.append(
+                  'scripts'))
+ 
+ from build import (AddCMakeToPath, AddZlibToPath, CheckoutGitRepo, CopyFile,
+-                   DownloadDebianSysroot, GetLibXml2Dirs, GetHostSysrootPlatform,
++                   DownloadDebianSysroot, GetLibXml2Dirs, GetHostSysrootPlatform, GitCherryPick,
+                    GitRevert, LLVM_DIR, IsGitAncestorToHead,
+                    LLVM_BUILD_TOOLS_DIR, RunCommand)
+ from update import (CHROMIUM_DIR, DownloadAndUnpack, EnsureDirExists,

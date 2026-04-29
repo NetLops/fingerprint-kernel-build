@@ -1,6 +1,6 @@
 "**":
   push:
-    linux-arm64:
+    linux-arm64: &linux-arm64
       runner:
         tags: cnb:arch:arm64:v8
         cpus: 16
@@ -51,7 +51,7 @@
               - artifacts/cnb/linux-arm64
               - logs/cnb/linux-arm64
 
-    linux-amd64:
+    linux-amd64: &linux-amd64
       runner:
         tags: cnb:arch:amd64
         cpus: 32
@@ -101,3 +101,9 @@
             attachments:
               - artifacts/cnb/linux-amd64
               - logs/cnb/linux-amd64
+
+  api_trigger_linux_arm64:
+    linux-arm64: *linux-arm64
+
+  api_trigger_linux_amd64:
+    linux-amd64: *linux-amd64
