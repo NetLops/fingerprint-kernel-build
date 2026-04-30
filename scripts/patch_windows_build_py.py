@@ -14,6 +14,7 @@ PowerShell string literals. It is intentionally idempotent.
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 
@@ -29,12 +30,53 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-py", required=True, help="Path to ungoogled-chromium-windows build.py")
     parser.add_argument("--timeout-hours", required=True, help="Ninja timeout in hours")
+    parser.add_argument(
+        "--gn-profile",
+        default="release",
+        choices=("release", "hosted-fast"),
+        help="Optional GN flag profile to apply to flags.windows.gn.",
+    )
     return parser.parse_args()
+
+
+def set_gn_arg(text: str, name: str, value: str) -> tuple[str, bool]:
+    line = f"{name}={value}"
+    pattern = re.compile(rf"^{re.escape(name)}\s*=.*$", re.MULTILINE)
+    if pattern.search(text):
+        new_text = pattern.sub(line, text)
+        return new_text, new_text != text
+    suffix = "\n" if text.endswith("\n") else "\n\n"
+    return f"{text}{suffix}{line}\n", True
+
+
+def apply_gn_profile(packaging_repo: Path, profile: str) -> bool:
+    if profile == "release":
+        return False
+    flags_path = packaging_repo / "flags.windows.gn"
+    text = flags_path.read_text(encoding="utf-8")
+    changed = False
+    # Hosted Windows runners cannot finish Chromium 146 with official PGO/LTO
+    # flags before the 6h hard cap. This profile produces a usable functional
+    # package for validation while preserving non-debug, non-component outputs.
+    for name, value in {
+        "chrome_pgo_phase": "0",
+        "is_official_build": "false",
+        "use_thin_lto": "false",
+        "symbol_level": "0",
+        "blink_symbol_level": "0",
+        "v8_symbol_level": "0",
+    }.items():
+        text, item_changed = set_gn_arg(text, name, value)
+        changed = changed or item_changed
+    flags_path.write_text(text, encoding="utf-8", newline="")
+    print(f"[OK] applied Windows GN profile {profile}: {flags_path} changed={changed}")
+    return changed
 
 
 def main() -> None:
     args = parse_args()
     build_py = Path(args.build_py)
+    packaging_repo = build_py.parent
     text = build_py.read_text(encoding="utf-8")
 
     timeout_old = "timeout=3.5*60*60"
@@ -80,7 +122,8 @@ def main() -> None:
     text, changed_package = replace_once(text, package_old, package_new, "conditional package step")
 
     build_py.write_text(text, encoding="utf-8", newline="")
-    changed = changed_timeout or changed_parser or changed_targets or changed_package
+    changed_gn = apply_gn_profile(packaging_repo, args.gn_profile)
+    changed = changed_timeout or changed_parser or changed_targets or changed_package or changed_gn
     print(f"[OK] patched {build_py} changed={changed}")
 
 
