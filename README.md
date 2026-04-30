@@ -81,6 +81,7 @@ python3 tools/fingerprint-kernel/bootstrap-build-repo.py \
 
 - `.github/workflows/build-mac-arm64.yml`
 - `.github/workflows/build-linux-arm64.yml`
+- `.github/workflows/build-windows-amd64.yml`
 
 默认是 `dry_run=true`，只做这些动作：
 
@@ -141,6 +142,32 @@ Linux 构建入口基于 `ungoogled-chromium-portablelinux` 的
 `ungoogled-chromium-windows` 的 `146.0.7680.177-1.1` tag，目标版本和本机
 默认 146 内核保持同一条线：
 
+当前 146/fk.3 Linux 正式包使用 CNB.cool 构建，避免本机 Docker 把 Mac 跑卡：
+
+```bash
+export CNB_TOKEN=$(awk '$1=="machine" && $2=="cnb.cool"{found=1; next} found && $1=="machine"{found=0} found && $1=="password"{print $2; exit}' ~/.netrc)
+
+curl --http1.1 -sS -X POST \
+  -H "Authorization: Bearer $CNB_TOKEN" \
+  -H 'accept: application/json' \
+  -H 'content-type: application/json' \
+  'https://api.cnb.cool/shunleite/fingerprint-kernel-build/-/build/start' \
+  -d '{"branch":"main","event":"api_trigger_linux_arm64","sync":false}'
+
+curl --http1.1 -sS -X POST \
+  -H "Authorization: Bearer $CNB_TOKEN" \
+  -H 'accept: application/json' \
+  -H 'content-type: application/json' \
+  'https://api.cnb.cool/shunleite/fingerprint-kernel-build/-/build/start' \
+  -d '{"branch":"main","event":"api_trigger_linux_amd64","sync":false}'
+```
+
+已完成的 Linux 包在 CNB commit attachment：
+
+- `https://cnb.cool/shunleite/fingerprint-kernel-build/-/commit/a352ec3e859ae055cad87e06ecb7dd451ca34b8e?tab=attachments`
+
+历史 GitHub Actions Linux 入口仍保留给额外 runner/实验：
+
 ```bash
 gh workflow run build-linux-arm64.yml \
   -R NetLops/fingerprint-kernel-build \
@@ -171,12 +198,16 @@ gh workflow run build-windows-amd64.yml \
   --ref <branch> \
   -f manifest_path=manifests/current-windows-amd64.json \
   -f dry_run=false \
-  -f ninja_jobs=2
+  -f ninja_jobs=16 \
+  -f windows_build_mode=release \
+  -f runs_on_json='["self-hosted","Windows","X64","fingerprint-kernel-build"]' \
+  -f build_timeout_hours=11
 ```
 
-如有大规格自建 Linux 构建机，建议把 `runs_on_json` 换成对应 runner label，
-例如 `["self-hosted","Linux","X64"]`，能减少 GitHub hosted runner 的磁盘和
-超时风险。
+注意：146 Windows x64 已实测 GitHub-hosted `windows-2022` 跑不完。release、
+chrome-only smoke、hosted-fast-release 三种模式都在约 330 分钟 watchdog
+前后只到 22k/56k 编译进度，没有产出 zip/exe。需要更大规格或自建 Windows x64
+runner；CNB 官方 Linux runner 不能替代 Windows/MSVC 原生环境。
 
 ## 这个 skeleton 已经带了什么
 
@@ -201,7 +232,8 @@ gh workflow run build-windows-amd64.yml \
 - `build-mac-arm64.yml` 会在自建 `macOS ARM64` runner 上执行真实构建
 - `build-linux-arm64.yml` 会在 Linux runner 上执行 portablelinux 构建，支持
   `arch=arm64` 和 `arch=x64`
-- `build-windows-amd64.yml` 会在 `windows-2022` runner 上执行 Windows x64 构建
+- `build-windows-amd64.yml` 会在 Windows x64 runner 上执行 Windows x64 构建；
+  146/fk.3 不要使用普通 GitHub-hosted `windows-2022` 做正式包
 - `build-mac-arm64.yml.example` 保留作额外实验模板
 
 ## 和 Ant Browser 仓库的关系

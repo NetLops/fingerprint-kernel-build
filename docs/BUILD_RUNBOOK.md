@@ -63,25 +63,25 @@
 触发 Linux ARM64 构建：
 
 ```bash
-gh workflow run build-linux-arm64.yml \
-  -R NetLops/fingerprint-kernel-build \
-  --ref <branch> \
-  -f manifest_path=manifests/current-linux-arm64.json \
-  -f dry_run=false \
-  -f arch=arm64 \
-  -f runs_on_json='["ubuntu-latest"]'
+export CNB_TOKEN=$(awk '$1=="machine" && $2=="cnb.cool"{found=1; next} found && $1=="machine"{found=0} found && $1=="password"{print $2; exit}' ~/.netrc)
+curl --http1.1 -sS -X POST \
+  -H "Authorization: Bearer $CNB_TOKEN" \
+  -H 'accept: application/json' \
+  -H 'content-type: application/json' \
+  'https://api.cnb.cool/shunleite/fingerprint-kernel-build/-/build/start' \
+  -d '{"branch":"main","event":"api_trigger_linux_arm64","sync":false}'
 ```
 
 触发 Linux AMD64 构建：
 
 ```bash
-gh workflow run build-linux-arm64.yml \
-  -R NetLops/fingerprint-kernel-build \
-  --ref <branch> \
-  -f manifest_path=manifests/current-linux-amd64.json \
-  -f dry_run=false \
-  -f arch=x64 \
-  -f runs_on_json='["ubuntu-latest"]'
+export CNB_TOKEN=$(awk '$1=="machine" && $2=="cnb.cool"{found=1; next} found && $1=="machine"{found=0} found && $1=="password"{print $2; exit}' ~/.netrc)
+curl --http1.1 -sS -X POST \
+  -H "Authorization: Bearer $CNB_TOKEN" \
+  -H 'accept: application/json' \
+  -H 'content-type: application/json' \
+  'https://api.cnb.cool/shunleite/fingerprint-kernel-build/-/build/start' \
+  -d '{"branch":"main","event":"api_trigger_linux_amd64","sync":false}'
 ```
 
 触发 Windows AMD64 构建：
@@ -92,7 +92,10 @@ gh workflow run build-windows-amd64.yml \
   --ref <branch> \
   -f manifest_path=manifests/current-windows-amd64.json \
   -f dry_run=false \
-  -f ninja_jobs=2
+  -f ninja_jobs=16 \
+  -f windows_build_mode=release \
+  -f runs_on_json='["self-hosted","Windows","X64","fingerprint-kernel-build"]' \
+  -f build_timeout_hours=11
 ```
 
 Linux workflow 会先 checkout `ungoogled-chromium-portablelinux`，跳过 mac 专用
@@ -109,8 +112,18 @@ portablelinux 的 `patches/series`。Windows workflow 会 checkout
 - `ungoogled-chromium_*_windows_x64.zip`
 - `ungoogled-chromium_*_installer_x64.exe`
 
-如果 hosted runner 出现磁盘不足或超时，换大规格自建 Linux runner，再把
-`runs_on_json` 改成对应 labels，例如 `["self-hosted","Linux","X64"]`。
+Linux 146/fk.3 已在 CNB.cool 通过；产物见：
+
+- `https://cnb.cool/shunleite/fingerprint-kernel-build/-/commit/a352ec3e859ae055cad87e06ecb7dd451ca34b8e?tab=attachments`
+
+Windows 146/fk.3 在普通 GitHub-hosted `windows-2022` 上不可行：
+
+- `25129319044`: release `-j8`，约 330 分钟到 `[22384/56754]` 后 watchdog 停止。
+- `25142149448`: chrome-only smoke `-j8`，约 330 分钟到 `[22366/56604]` 后停止。
+- `25159317309`: hosted-fast-release `-j8`，约 330 分钟到 `[22302/56646]` 后停止。
+
+这不是源码错误，而是 runner 算力/时限问题。下一步必须接入更大规格或自建
+Windows x64 runner；CNB 官方 Linux runner 不能替代 Windows/MSVC 原生构建。
 
 ## 最低验收
 
