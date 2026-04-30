@@ -20,9 +20,17 @@ on:
           - "true"
           - "false"
       ninja_jobs:
-        description: Ninja job count passed to build.py; GitHub-hosted Windows has a 6h hard cap, so default to 8 for release attempts.
+        description: Ninja job count passed to build.py. GitHub-hosted Windows is too slow for full release builds; larger/self-hosted runners may use 8+.
         required: false
         default: "8"
+      windows_build_mode:
+        description: Build mode for Windows. release builds chrome+chromedriver+mini_installer; smoke builds only chrome for patch validation.
+        required: false
+        type: choice
+        default: "release"
+        options:
+          - "release"
+          - "smoke"
       runs_on_json:
         description: JSON array/string for runs-on. Use a larger Windows runner when available.
         required: false
@@ -134,11 +142,19 @@ jobs:
           } else {
             throw "Could not find build.py timeout marker: $old"
           }
+
+          python "$env:FK_BUILD_REPO_ROOT\scripts\patch_windows_build_py.py" `
+            --build-py "$buildPy" `
+            --timeout-hours "$timeoutHours"
           python -m pip install httplib2==0.22.0
           $env:PYTHONUNBUFFERED = "1"
           $logFile = Join-Path "$env:FK_LOGS_DIR" "build.log"
           $errFile = Join-Path "$env:FK_LOGS_DIR" "build.err.log"
           $buildArgs = @("build.py", "--ci", "-j", "${{ inputs.ninja_jobs }}")
+          if ("${{ inputs.windows_build_mode }}" -eq "smoke") {
+            $buildArgs += @("--targets", "chrome")
+            Write-Host "[OK] Windows smoke mode: building chrome only; no release artifacts will be packaged."
+          }
           Write-Host "[OK] launching build: python $($buildArgs -join ' ')"
           $proc = Start-Process -FilePath "python" `
             -ArgumentList $buildArgs `
@@ -189,7 +205,7 @@ jobs:
           }
 
       - name: Smoke Check Windows AMD64 Artifacts
-        if: ${{ inputs.dry_run != 'true' }}
+        if: ${{ inputs.dry_run != 'true' && inputs.windows_build_mode == 'release' }}
         run: |
           Set-Location "$env:FK_BUILD_REPO_ROOT"
           python scripts/run_windows_smoke_checks.py `
